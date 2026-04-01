@@ -114,16 +114,18 @@ export default function PackagingTypesPage() {
             <Table>
               <TableHeader className="bg-gray-50/50">
                 <TableRow>
-                  <TableHead>Total Packaging</TableHead>
-                  <TableHead>Net Weight</TableHead>
+                  <TableHead>Packaging</TableHead>
+                  <TableHead>Items Per Case</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((p) => (
                   <TableRow key={p.id} className="hover:bg-gray-50/50">
-                    <TableCell className="font-medium text-gray-900">{p.name}</TableCell>
-                    <TableCell className="text-gray-500">{p.description || "—"}</TableCell>
+                    <TableCell className="font-medium text-gray-900">
+                      {p.name}{p.description ? ` - ${p.description}` : ''}
+                    </TableCell>
+                    <TableCell className="text-gray-700 font-medium">{p.items_per_case}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 hover:text-blue-800 hover:bg-blue-50" onClick={() => openEditDialog(p)}>

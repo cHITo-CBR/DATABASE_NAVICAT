@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { PlusCircle, Search, PackageOpen, Loader2, Inbox, Edit, Archive } from "lucide-react";
+import { PlusCircle, Search, PackageOpen, Loader2, Inbox, Edit, Archive, Upload, X } from "lucide-react";
 import { getProducts, createProduct, updateProduct, archiveProduct, type ProductRow } from "@/app/actions/products";
-import { getCategories, getBrands, type CategoryRow, type BrandRow } from "@/app/actions/catalog";
+import { getCategories, getBrands, getPackagingTypes, type CategoryRow, type BrandRow, type PackagingRow } from "@/app/actions/catalog";
 
 function EmptyState({ message }: { message: string }) {
   return (
@@ -25,11 +25,15 @@ export default function ProductCatalogPage() {
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [brands, setBrands] = useState<BrandRow[]>([]);
+  const [packagingTypes, setPackagingTypes] = useState<PackagingRow[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductRow | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -39,9 +43,10 @@ export default function ProductCatalogPage() {
   }, [search]);
 
   useEffect(() => {
-    Promise.all([getCategories(), getBrands()]).then(([cats, brs]) => {
+    Promise.all([getCategories(), getBrands(), getPackagingTypes()]).then(([cats, brs, pkgs]) => {
       setCategories(cats);
       setBrands(brs);
+      setPackagingTypes(pkgs);
     });
   }, []);
 
@@ -54,6 +59,12 @@ export default function ProductCatalogPage() {
     e.preventDefault();
     setSaving(true);
     const form = new FormData(e.currentTarget);
+    
+    // Add the uploaded image URL to the form data
+    if (uploadedImageUrl) {
+      form.append('imageUrl', uploadedImageUrl);
+    }
+    
     const result = editingProduct 
       ? await updateProduct(editingProduct.id, form)
       : await createProduct(form);
@@ -61,9 +72,53 @@ export default function ProductCatalogPage() {
     setSaving(false);
     if (result.success) {
       setDialogOpen(false);
+      setUploadedImageUrl("");
       loadProducts();
     } else {
       alert(result.error || "Failed to save product.");
+    }
+  }
+
+  async function handleImageUpload(file: File) {
+    if (!file) return;
+    
+    setUploadingImage(true);
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const response = await fetch('/api/logout', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setUploadedImageUrl(result.imageUrl);
+      } else {
+        alert(result.error || 'Failed to upload image');
+        console.error('Upload error:', result);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload image');
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  }
+
+  function removeImage() {
+    setUploadedImageUrl("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   }
 
@@ -75,11 +130,13 @@ export default function ProductCatalogPage() {
 
   function openEditDialog(product: ProductRow) {
     setEditingProduct(product);
+    setUploadedImageUrl(product.image_url || "");
     setDialogOpen(true);
   }
 
   function openCreateDialog() {
     setEditingProduct(null);
+    setUploadedImageUrl("");
     setDialogOpen(true);
   }
 
@@ -113,15 +170,96 @@ export default function ProductCatalogPage() {
               <Label htmlFor="description">Description</Label>
               <Input id="description" name="description" placeholder="Product description" defaultValue={editingProduct?.description || ""} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="totalPackaging">Total Packaging</Label>
-                <Input id="totalPackaging" name="totalPackaging" placeholder="e.g. Box of 48" defaultValue={editingProduct?.total_packaging || ""} />
+            <div className="space-y-2">
+              <Label>Product Image</Label>
+              <div className="flex items-center space-x-4">
+                {uploadedImageUrl ? (
+                  <div className="relative">
+                    <img 
+                      src={uploadedImageUrl} 
+                      alt="Product" 
+                      className="w-20 h-20 object-cover rounded-md border"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center">
+                    <Upload className="w-8 h-8 text-gray-400" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                    className="w-full"
+                  >
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        {uploadedImageUrl ? 'Change Image' : 'Upload Image'}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="netWeight">Net Weight</Label>
-                <Input id="netWeight" name="netWeight" placeholder="e.g. 155g" defaultValue={editingProduct?.net_weight || ""} />
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="packagingId">Packaging & Weight</Label>
+              <Select name="packagingId" defaultValue={editingProduct?.packaging_id?.toString() || ""}>
+                <SelectTrigger><SelectValue placeholder="Select packaging" /></SelectTrigger>
+                <SelectContent>
+                  {packagingTypes.map((pkg) => (
+                    <SelectItem key={pkg.id} value={String(pkg.id)}>
+                      {pkg.name}{pkg.description ? ` - ${pkg.description}` : ''} ({pkg.items_per_case} items/case)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="totalCases">Total Cases</Label>
+              <Input 
+                id="totalCases" 
+                name="totalCases" 
+                type="number" 
+                min="0"
+                placeholder="e.g. 100" 
+                defaultValue={editingProduct?.total_cases || 0} 
+              />
+              <p className="text-xs text-gray-500">Number of cases/boxes in inventory</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="packagingPrice">Packaging Price</Label>
+              <Input 
+                id="packagingPrice" 
+                name="packagingPrice" 
+                type="number" 
+                step="0.01"
+                min="0"
+                placeholder="e.g. 125.50" 
+                defaultValue={editingProduct?.packaging_price || ""} 
+              />
+              <p className="text-xs text-gray-500">Price per packaging unit in PHP</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="categoryId">Category</Label>
@@ -187,8 +325,9 @@ export default function ProductCatalogPage() {
                   <TableHead>Product Name</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Brand</TableHead>
-                  <TableHead>Total Packaging</TableHead>
+                  <TableHead>Packaging Price</TableHead>
                   <TableHead>Net Weight</TableHead>
+                  <TableHead>Total Cases</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -197,16 +336,35 @@ export default function ProductCatalogPage() {
                   <TableRow key={p.id} className="hover:bg-gray-50/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center">
-                          <PackageOpen className="w-5 h-5 text-gray-400" />
+                        <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
+                          {p.image_url ? (
+                            <img 
+                              src={p.image_url} 
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <PackageOpen className="w-5 h-5 text-gray-400" />
+                          )}
                         </div>
                         <span className="font-semibold text-[#005914]">{p.name}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-gray-500">{p.product_categories?.name ?? "—"}</TableCell>
-                    <TableCell className="text-gray-500 font-medium">{p.brands?.name ?? "—"}</TableCell>
-                    <TableCell className="text-gray-500">{p.total_packaging || "—"}</TableCell>
+                    <TableCell className="text-gray-500">{p.category_name ?? "—"}</TableCell>
+                    <TableCell className="text-gray-500 font-medium">{p.brand_name ?? "—"}</TableCell>
+                    <TableCell className="text-gray-500">
+                      {p.packaging_price ? `₱${p.packaging_price.toFixed(2)}` : "—"}
+                    </TableCell>
                     <TableCell className="text-gray-500">{p.net_weight || "—"}</TableCell>
+                    <TableCell className="text-gray-700 font-semibold">
+                      <span className={`px-2 py-1 rounded-md text-xs ${
+                        p.total_cases === 0 ? 'bg-red-50 text-red-700' : 
+                        p.total_cases < 10 ? 'bg-yellow-50 text-yellow-700' : 
+                        'bg-green-50 text-green-700'
+                      }`}>
+                        {p.total_cases} cases
+                      </span>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => openEditDialog(p)} className="text-[#005914] hover:bg-[#E2EBE5]">

@@ -54,7 +54,7 @@ export async function createCategory(formData: FormData) {
   
   try {
     await insert(
-      "INSERT INTO product_categories (name, description, created_at) VALUES (?, ?, NOW())",
+      "INSERT INTO product_categories (name, description) VALUES (?, ?)",
       [name, description || null]
     );
     revalidatePath("/catalog/categories");
@@ -170,7 +170,7 @@ export async function createBrand(formData: FormData) {
   
   try {
     await insert(
-      "INSERT INTO brands (name, description, created_at) VALUES (?, ?, NOW())",
+      "INSERT INTO brands (name, description) VALUES (?, ?)",
       [name, description || null]
     );
     revalidatePath("/catalog/brands");
@@ -286,7 +286,7 @@ export async function createUnit(formData: FormData) {
   
   try {
     await insert(
-      "INSERT INTO units (name, abbreviation, created_at) VALUES (?, ?, NOW())",
+      "INSERT INTO units (name, abbreviation) VALUES (?, ?)",
       [name, abbreviation || null]
     );
     revalidatePath("/catalog/units");
@@ -357,6 +357,7 @@ export interface PackagingRow {
   id: number; 
   name: string; 
   description: string | null; 
+  items_per_case: number;
   created_at: string; 
   is_archived: boolean; 
 }
@@ -365,6 +366,7 @@ interface PackagingRowDB extends RowDataPacket {
   id: number;
   name: string;
   description: string | null;
+  items_per_case: number;
   created_at: string;
   is_archived: number;
 }
@@ -396,14 +398,24 @@ export async function getArchivedPackagingTypes(): Promise<PackagingRow[]> {
 }
 
 export async function createPackagingType(formData: FormData) {
-  const name = formData.get("name") as string;
-  const description = formData.get("description") as string;
-  if (!name) return { error: "Name is required." };
+  const packaging = formData.get("packaging") as string;
+  const itemsPerCase = formData.get("itemsPerCase") as string;
+  if (!packaging) return { error: "Packaging is required." };
+  
+  // Parse the combined packaging field
+  let name = packaging;
+  let description = null;
+  
+  if (packaging.includes(' - ')) {
+    const parts = packaging.split(' - ');
+    name = parts[0].trim();
+    description = parts[1].trim();
+  }
   
   try {
     await insert(
-      "INSERT INTO packaging_types (name, description, created_at) VALUES (?, ?, NOW())",
-      [name, description || null]
+      "INSERT INTO packaging_types (name, description, items_per_case) VALUES (?, ?, ?)",
+      [name, description, itemsPerCase ? parseInt(itemsPerCase) : 1]
     );
     revalidatePath("/catalog/packaging");
     return { success: true };
@@ -413,14 +425,24 @@ export async function createPackagingType(formData: FormData) {
 }
 
 export async function updatePackagingType(id: number, formData: FormData) {
-  const name = formData.get("name") as string;
-  const description = formData.get("description") as string;
-  if (!name) return { error: "Name is required." };
+  const packaging = formData.get("packaging") as string;
+  const itemsPerCase = formData.get("itemsPerCase") as string;
+  if (!packaging) return { error: "Packaging is required." };
+  
+  // Parse the combined packaging field
+  let name = packaging;
+  let description = null;
+  
+  if (packaging.includes(' - ')) {
+    const parts = packaging.split(' - ');
+    name = parts[0].trim();
+    description = parts[1].trim();
+  }
   
   try {
     await update(
-      "UPDATE packaging_types SET name = ?, description = ? WHERE id = ?",
-      [name, description || null, id]
+      "UPDATE packaging_types SET name = ?, description = ?, items_per_case = ? WHERE id = ?",
+      [name, description, itemsPerCase ? parseInt(itemsPerCase) : 1, id]
     );
     revalidatePath("/catalog/packaging");
     return { success: true };

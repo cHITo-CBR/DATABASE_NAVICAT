@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
   `name` VARCHAR(255) NOT NULL,
   `description` TEXT,
   `is_active` TINYINT(1) DEFAULT 1,
+  `is_archived` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -61,7 +63,36 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
 CREATE TABLE IF NOT EXISTS `brands` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(255) NOT NULL,
+  `description` TEXT,
   `is_active` TINYINT(1) DEFAULT 1,
+  `is_archived` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for units
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `units` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NOT NULL,
+  `abbreviation` VARCHAR(50),
+  `is_active` TINYINT(1) DEFAULT 1,
+  `is_archived` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for packaging_types
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS `packaging_types` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NOT NULL,
+  `description` TEXT,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `is_archived` TINYINT(1) DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -100,7 +131,9 @@ CREATE TABLE IF NOT EXISTS `product_variants` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_sku` (`sku`),
-  CONSTRAINT `fk_variants_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_variants_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_variants_packaging` FOREIGN KEY (`packaging_id`) REFERENCES `packaging_types` (`id`),
+  CONSTRAINT `fk_variants_unit` FOREIGN KEY (`unit_id`) REFERENCES `units` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ----------------------------

@@ -168,7 +168,7 @@ export default function UsersManagementPage() {
                     <TableCell className="text-gray-500">{user.email}</TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10 capitalize">
-                        {user.roles?.name ?? "N/A"}
+                        {user.role_name ?? "N/A"}
                       </span>
                     </TableCell>
                     <TableCell>

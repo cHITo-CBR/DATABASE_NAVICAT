@@ -8,13 +8,16 @@ export interface ProductRow {
   id: string;
   name: string;
   description: string | null;
+  image_url: string | null;
+  total_cases: number;
+  packaging_price: number | null; // Changed from total_packaging to packaging_price (money)
   is_active: boolean;
   created_at: string;
   category_id: number | null;
   brand_id: number | null;
+  packaging_id: number | null;
   category_name?: string | null;
   brand_name?: string | null;
-  total_packaging: string | null;
   net_weight: string | null;
 }
 
@@ -22,11 +25,14 @@ interface ProductRowDB extends RowDataPacket {
   id: string;
   name: string;
   description: string | null;
+  image_url: string | null;
+  total_cases: number;
   is_active: number;
   is_archived: number;
   created_at: string;
   category_id: number | null;
   brand_id: number | null;
+  packaging_id: number | null;
   category_name: string | null;
   brand_name: string | null;
   total_packaging: string | null;
@@ -64,10 +70,13 @@ export async function getProducts(search?: string): Promise<ProductRow[]> {
     let sql = `
       SELECT p.*, 
              pc.name as category_name, 
-             b.name as brand_name
+             b.name as brand_name,
+             pt.name as packaging_type_name,
+             pt.description as net_weight
       FROM products p
       LEFT JOIN product_categories pc ON p.category_id = pc.id
       LEFT JOIN brands b ON p.brand_id = b.id
+      LEFT JOIN packaging_types pt ON p.packaging_id = pt.id
       WHERE p.is_archived = ?
     `;
     const params: any[] = [fromBoolean(false)];
@@ -93,8 +102,11 @@ export async function createProduct(formData: FormData) {
   const description = formData.get("description") as string;
   const categoryId = formData.get("categoryId") as string;
   const brandId = formData.get("brandId") as string;
+  const packagingId = formData.get("packagingId") as string;
+  const totalCases = formData.get("totalCases") as string;
   const totalPackaging = formData.get("totalPackaging") as string;
-  const netWeight = formData.get("netWeight") as string;
+  const packagingPrice = formData.get("packagingPrice") as string;
+  const imageUrl = formData.get("imageUrl") as string;
   const variantsJSON = formData.get("variants") as string;
 
   if (!name) return { error: "Product name is required." };
@@ -103,16 +115,18 @@ export async function createProduct(formData: FormData) {
     const productId = generateUUID();
 
     await insert(
-      `INSERT INTO products (id, name, description, category_id, brand_id, total_packaging, net_weight, is_active, is_archived, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      `INSERT INTO products (id, name, description, image_url, total_cases, packaging_price, category_id, brand_id, packaging_id, is_active, is_archived)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         productId,
         name,
         description || null,
+        imageUrl || null,
+        totalCases ? parseInt(totalCases) : 0,
+        packagingPrice ? parseFloat(packagingPrice) : 0.00,
         categoryId ? parseInt(categoryId) : null,
         brandId ? parseInt(brandId) : null,
-        totalPackaging || null,
-        netWeight || null,
+        packagingId ? parseInt(packagingId) : null,
         fromBoolean(true),
         fromBoolean(false)
       ]
@@ -176,10 +190,13 @@ export async function getArchivedProducts(): Promise<ProductRow[]> {
     const products = await query<ProductRowDB>(
       `SELECT p.*, 
               pc.name as category_name, 
-              b.name as brand_name
+              b.name as brand_name,
+              pt.name as total_packaging,
+              pt.description as net_weight
        FROM products p
        LEFT JOIN product_categories pc ON p.category_id = pc.id
        LEFT JOIN brands b ON p.brand_id = b.id
+       LEFT JOIN packaging_types pt ON p.packaging_id = pt.id
        WHERE p.is_archived = ?
        ORDER BY p.created_at DESC`,
       [fromBoolean(true)]
@@ -222,8 +239,9 @@ export async function updateProduct(id: string, formData: FormData) {
   const description = formData.get("description") as string;
   const categoryId = formData.get("categoryId") as string;
   const brandId = formData.get("brandId") as string;
-  const totalPackaging = formData.get("totalPackaging") as string;
-  const netWeight = formData.get("netWeight") as string;
+  const packagingId = formData.get("packagingId") as string;
+  const totalCases = formData.get("totalCases") as string;
+  const imageUrl = formData.get("imageUrl") as string;
   const variantsJSON = formData.get("variants") as string;
 
   if (!name) return { error: "Product name is required." };
@@ -231,15 +249,16 @@ export async function updateProduct(id: string, formData: FormData) {
   try {
     await update(
       `UPDATE products 
-       SET name = ?, description = ?, category_id = ?, brand_id = ?, total_packaging = ?, net_weight = ?
+       SET name = ?, description = ?, image_url = ?, total_cases = ?, category_id = ?, brand_id = ?, packaging_id = ?
        WHERE id = ?`,
       [
         name,
         description || null,
+        imageUrl || null,
+        totalCases ? parseInt(totalCases) : 0,
         categoryId ? parseInt(categoryId) : null,
         brandId ? parseInt(brandId) : null,
-        totalPackaging || null,
-        netWeight || null,
+        packagingId ? parseInt(packagingId) : null,
         id
       ]
     );
