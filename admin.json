@@ -1,0 +1,14 @@
+[
+  {
+    "full_name": "Admin FlowStock",
+    "email": "admin@flowstock.com",
+    "status": "approved",
+    "is_active": true
+  },
+  {
+    "full_name": "john doe",
+    "email": "johndoe@gmail.com",
+    "status": "approved",
+    "is_active": true
+  }
+]
