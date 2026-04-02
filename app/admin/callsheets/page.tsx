@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileText, Loader2, Inbox, CheckCircle, XCircle, Eye, Clock } from "lucide-react";
 import { getAllCallsheets, updateCallsheetStatus, getCallsheetWithItems } from "@/app/actions/callsheets";
@@ -171,36 +172,46 @@ export default function AdminCallsheetsPage() {
                 <div><span className="text-gray-500">Visit Date:</span> <span className="font-medium">{new Date(detail.visit_date).toLocaleDateString()}</span></div>
                 <div><span className="text-gray-500">Status:</span> <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${statusStyles[detail.status]}`}>{detail.status}</span></div>
               </div>
-              {detail.remarks && <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg italic">"{detail.remarks}"</p>}
+              {detail.remarks && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-gray-500 uppercase">Visit Remarks</Label>
+                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg italic">"{detail.remarks}"</p>
+                </div>
+              )}
               {detail.callsheet_items?.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Product ID</TableHead>
-                      <TableHead>Packing</TableHead>
-                      <TableHead>P3</TableHead>
-                      <TableHead>Inv (CS)</TableHead>
-                      <TableHead>Inv (Pcs)</TableHead>
-                      <TableHead>SO</TableHead>
-                      <TableHead>FO</TableHead>
-                      <TableHead>Actual</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detail.callsheet_items.map((item: any) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-mono text-xs">{item.product_id?.substring(0,8)}...</TableCell>
-                        <TableCell>{item.packing}</TableCell>
-                        <TableCell>{item.p3}</TableCell>
-                        <TableCell>{item.inventory_cs}</TableCell>
-                        <TableCell>{item.inventory_pcs}</TableCell>
-                        <TableCell>{item.suggested_order}</TableCell>
-                        <TableCell className="font-bold text-[#005914]">{item.final_order}</TableCell>
-                        <TableCell>{item.actual}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-bold text-gray-700 uppercase">Product Inventory & Orders</h4>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-bold">Product</TableHead>
+                          <TableHead className="font-bold">Packaging</TableHead>
+                          <TableHead className="font-bold text-right" title="Target/Budget">P3</TableHead>
+                          <TableHead className="font-bold text-right" title="Total Inventory">IG</TableHead>
+                          <TableHead className="font-bold text-right">Inv (CS)</TableHead>
+                          <TableHead className="font-bold text-right" title="Suggested Order">SO</TableHead>
+                          <TableHead className="font-bold text-right" title="Final Order">FO</TableHead>
+                          <TableHead className="font-bold text-right" title="Confirmed Order">Actual</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detail.callsheet_items.map((item: any) => (
+                          <TableRow key={item.id} className="hover:bg-gray-50/50">
+                            <TableCell className="font-medium">{item.product_name || `Product ${item.product_id?.substring(0,8)}`}</TableCell>
+                            <TableCell className="text-gray-600">{item.packaging_name || '-'}</TableCell>
+                            <TableCell className="text-right">{item.p3 ?? '-'}</TableCell>
+                            <TableCell className="text-right">{item.ig ?? '-'}</TableCell>
+                            <TableCell className="text-right font-semibold text-blue-600">{item.inventory_cs ?? 0}</TableCell>
+                            <TableCell className="text-right">{item.so ?? 0}</TableCell>
+                            <TableCell className="text-right font-bold text-[#005914]">{item.fo ?? 0}</TableCell>
+                            <TableCell className="text-right font-semibold">{item.actual ?? 0}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
               )}
             </div>
           ) : (

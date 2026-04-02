@@ -8,13 +8,12 @@ export type CallsheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
 export interface CallsheetItemInput {
   product_id: string;
-  packing?: string;
+  packaging_id?: number | null;
   p3?: number;
   ig?: number;
   inventory_cs?: number;
-  inventory_pcs?: number;
-  suggested_order?: number;
-  final_order?: number;
+  so?: number; // Suggested Order
+  fo?: number; // Final Order
   actual?: number;
 }
 
@@ -49,12 +48,12 @@ export async function createCallsheet(input: CreateCallsheetInput) {
       for (const item of items) {
         const itemId = generateUUID();
         await query(`
-          INSERT INTO callsheet_items (id, callsheet_id, product_id, packing, p3, ig, inventory_cs, inventory_pcs, suggested_order, final_order, actual)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO callsheet_items (id, callsheet_id, product_id, packaging_id, p3, ig, inventory_cs, so, fo, actual)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
-          itemId, callsheetId, item.product_id, item.packing || null,
-          item.p3 ?? null, item.ig ?? null, item.inventory_cs ?? null, item.inventory_pcs ?? null,
-          item.suggested_order ?? null, item.final_order ?? null, item.actual ?? null
+          itemId, callsheetId, item.product_id, item.packaging_id ?? null,
+          item.p3 ?? null, item.ig ?? null, item.inventory_cs ?? null,
+          item.so ?? null, item.fo ?? null, item.actual ?? null
         ]);
       }
     }
@@ -103,14 +102,15 @@ interface CallsheetItemDbRow extends RowDataPacket {
   id: string;
   callsheet_id: string;
   product_id: string;
-  packing: string | null;
+  packaging_id: number | null;
   p3: number | null;
   ig: number | null;
   inventory_cs: number | null;
-  inventory_pcs: number | null;
-  suggested_order: number | null;
-  final_order: number | null;
+  so: number | null;
+  fo: number | null;
   actual: number | null;
+  product_name?: string | null;
+  packaging_name?: string | null;
 }
 
 /**
@@ -154,7 +154,14 @@ export async function getCallsheetWithItems(callsheetId: string) {
     }
 
     const items = await query<CallsheetItemDbRow>(`
-      SELECT * FROM callsheet_items WHERE callsheet_id = ?
+      SELECT 
+        ci.*,
+        p.name as product_name,
+        pt.name as packaging_name
+      FROM callsheet_items ci
+      LEFT JOIN products p ON ci.product_id = p.id
+      LEFT JOIN packaging_types pt ON ci.packaging_id = pt.id
+      WHERE ci.callsheet_id = ?
     `, [callsheetId]);
 
     const data = {
@@ -227,5 +234,34 @@ export async function updateCallsheetStatus(callsheetId: string, status: Callshe
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+// ═══════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════
+
+interface PackagingTypeRow extends RowDataPacket {
+  id: number;
+  name: string;
+  description: string | null;
+  items_per_case: number;
+}
+
+/**
+ * Fetches all active packaging types for dropdown.
+ */
+export async function getPackagingTypes() {
+  try {
+    const rows = await query<PackagingTypeRow>(`
+      SELECT id, name, description, items_per_case
+      FROM packaging_types
+      WHERE is_active = 1 AND is_archived = 0
+      ORDER BY name ASC
+    `);
+    return rows;
+  } catch (error: any) {
+    console.error("getPackagingTypes error:", error);
+    return [];
   }
 }

@@ -20,10 +20,17 @@ import {
 import Link from "next/link";
 import { getCustomers, type CustomerRow } from "@/app/actions/customers";
 import { getProducts, type ProductRow } from "@/app/actions/products";
-import { createCallsheet, type CallsheetItemInput } from "@/app/actions/callsheets";
+import { createCallsheet, type CallsheetItemInput, getPackagingTypes } from "@/app/actions/callsheets";
 import { getCurrentUser } from "@/app/actions/auth";
 
 // --- Components ---
+
+interface PackagingType {
+  id: number;
+  name: string;
+  description: string | null;
+  items_per_case: number;
+}
 
 function CallsheetForm() {
   const searchParams = useSearchParams();
@@ -32,6 +39,7 @@ function CallsheetForm() {
 
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [packagingTypes, setPackagingTypes] = useState<PackagingType[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [userId, setUserId] = useState<string>("");
@@ -44,18 +52,20 @@ function CallsheetForm() {
   const [roundNumber, setRoundNumber] = useState(1);
   const [remarks, setRemarks] = useState("");
   const [items, setItems] = useState<CallsheetItemInput[]>([
-    { product_id: "", packing: "", p3: 0, ig: 0, inventory_cs: 0, inventory_pcs: 0, suggested_order: 0, final_order: 0, actual: 0 }
+    { product_id: "", packaging_id: null, p3: 0, ig: 0, inventory_cs: 0, so: 0, fo: 0, actual: 0 }
   ]);
 
   useEffect(() => {
     async function load() {
-      const [custData, prodData, session] = await Promise.all([
+      const [custData, prodData, packData, session] = await Promise.all([
         getCustomers(),
         getProducts(),
+        getPackagingTypes(),
         getCurrentUser()
       ]);
       setCustomers(custData);
       setProducts(prodData);
+      setPackagingTypes(packData);
       if (session?.user?.id) setUserId(session.user.id);
       setLoading(false);
     }
@@ -63,7 +73,7 @@ function CallsheetForm() {
   }, []);
 
   const addItem = () => {
-    setItems([...items, { product_id: "", packing: "", p3: 0, ig: 0, inventory_cs: 0, inventory_pcs: 0, suggested_order: 0, final_order: 0, actual: 0 }]);
+    setItems([...items, { product_id: "", packaging_id: null, p3: 0, ig: 0, inventory_cs: 0, so: 0, fo: 0, actual: 0 }]);
   };
 
   const removeItem = (index: number) => {
@@ -74,12 +84,9 @@ function CallsheetForm() {
     const newItems = [...items];
     (newItems[index] as any)[field] = value;
     
-    // Auto-fill packing if product is selected
-    if (field === "product_id") {
-       const product = products.find(p => p.id === value);
-       if (product) {
-          newItems[index].packing = product.total_packaging || "";
-       }
+    // Auto-select first packaging type if product is selected and no packaging chosen
+    if (field === "product_id" && value && packagingTypes.length > 0 && !newItems[index].packaging_id) {
+      newItems[index].packaging_id = packagingTypes[0].id;
     }
     
     setItems(newItems);
@@ -233,19 +240,23 @@ function CallsheetForm() {
                         </select>
                      </div>
 
-                     {/* Packing, P3, IG */}
+                     {/* Packaging Dropdown, P3, IG */}
                      <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-400 font-bold uppercase">Packing</Label>
-                           <Input 
-                              placeholder="e.g. 24x1" 
-                              className="h-9 text-xs rounded-lg border-gray-100" 
-                              value={item.packing} 
-                              onChange={(e) => updateItem(index, "packing", e.target.value)}
-                           />
+                           <Label className="text-[10px] text-gray-400 font-bold uppercase">Packaging</Label>
+                           <select 
+                              className="w-full h-9 px-2 text-xs rounded-lg border border-gray-100 focus:ring-2 focus:ring-[#005914]"
+                              value={item.packaging_id || ""}
+                              onChange={(e) => updateItem(index, "packaging_id", e.target.value ? parseInt(e.target.value) : null)}
+                           >
+                              <option value="">Select...</option>
+                              {packagingTypes.map(pt => (
+                                <option key={pt.id} value={pt.id}>{pt.name}</option>
+                              ))}
+                           </select>
                         </div>
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-400 font-bold uppercase">P3</Label>
+                           <Label className="text-[10px] text-gray-400 font-bold uppercase" title="Target/Budget">P3</Label>
                            <Input 
                               type="number" 
                               className="h-9 text-xs rounded-lg border-gray-100" 
@@ -254,7 +265,7 @@ function CallsheetForm() {
                            />
                         </div>
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-400 font-bold uppercase">IG</Label>
+                           <Label className="text-[10px] text-gray-400 font-bold uppercase" title="Total Inventory">IG</Label>
                            <Input 
                               type="number" 
                               className="h-9 text-xs rounded-lg border-gray-100" 
@@ -264,24 +275,16 @@ function CallsheetForm() {
                         </div>
                      </div>
 
-                     {/* Inventory Counts */}
-                     <div className="grid grid-cols-2 gap-3 bg-blue-50/30 p-3 rounded-xl border border-blue-50">
+                     {/* Inventory Cases */}
+                     <div className="bg-blue-50/30 p-3 rounded-xl border border-blue-50">
                         <div className="space-y-1">
                            <Label className="text-[10px] text-blue-600 font-bold uppercase">Inv (Case)</Label>
                            <Input 
                               type="number" 
                               className="h-10 text-sm font-bold rounded-lg border-blue-100" 
                               value={item.inventory_cs} 
-                              onChange={(e) => updateItem(index, "inventory_cs", parseFloat(e.target.value) || 0)}
-                           />
-                        </div>
-                        <div className="space-y-1">
-                           <Label className="text-[10px] text-blue-600 font-bold uppercase">Inv (Pcs)</Label>
-                           <Input 
-                              type="number" 
-                              className="h-10 text-sm font-bold rounded-lg border-blue-100" 
-                              value={item.inventory_pcs} 
-                              onChange={(e) => updateItem(index, "inventory_pcs", parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateItem(index, "inventory_cs", parseInt(e.target.value) || 0)}
+                              placeholder="Admin inventory in cases"
                            />
                         </div>
                      </div>
@@ -289,30 +292,30 @@ function CallsheetForm() {
                      {/* Orders */}
                      <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-500 font-bold uppercase">SO</Label>
+                           <Label className="text-[10px] text-gray-500 font-bold uppercase" title="Suggested Order">SO</Label>
                            <Input 
                               type="number" 
                               className="h-9 text-xs rounded-lg border-gray-100" 
-                              value={item.suggested_order} 
-                              onChange={(e) => updateItem(index, "suggested_order", parseFloat(e.target.value) || 0)}
+                              value={item.so} 
+                              onChange={(e) => updateItem(index, "so", parseInt(e.target.value) || 0)}
                            />
                         </div>
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-500 font-bold uppercase">FO</Label>
+                           <Label className="text-[10px] text-gray-500 font-bold uppercase" title="Final Order">FO</Label>
                            <Input 
                               type="number" 
                               className="h-9 text-xs rounded-lg border-gray-100 font-bold text-[#005914]" 
-                              value={item.final_order} 
-                              onChange={(e) => updateItem(index, "final_order", parseFloat(e.target.value) || 0)}
+                              value={item.fo} 
+                              onChange={(e) => updateItem(index, "fo", parseInt(e.target.value) || 0)}
                            />
                         </div>
                         <div className="space-y-1">
-                           <Label className="text-[10px] text-gray-500 font-bold uppercase">Actual</Label>
+                           <Label className="text-[10px] text-gray-500 font-bold uppercase" title="Confirmed Order/Delivery">Actual</Label>
                            <Input 
                               type="number" 
                               className="h-9 text-xs rounded-lg border-gray-100" 
                               value={item.actual} 
-                              onChange={(e) => updateItem(index, "actual", parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateItem(index, "actual", parseInt(e.target.value) || 0)}
                            />
                         </div>
                      </div>
