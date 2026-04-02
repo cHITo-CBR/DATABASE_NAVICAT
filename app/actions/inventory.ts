@@ -99,11 +99,18 @@ interface MovementTypeRow extends RowDataPacket {
 export async function getMovementTypes(): Promise<{ id: number; name: string; direction: string }[]> {
   try {
     const rows = await query<MovementTypeRow>(`
-      SELECT id, name, direction FROM inventory_movement_types ORDER BY name
+      SELECT id, name, direction FROM inventory_movement_types WHERE is_active = 1 ORDER BY name
     `);
     return rows;
-  } catch {
-    return [];
+  } catch (error) {
+    console.error("Error fetching movement types - table may not exist:", error);
+    // Return default movement types if table doesn't exist
+    return [
+      { id: 1, name: "Stock In", direction: "in" },
+      { id: 2, name: "Stock Out", direction: "out" },
+      { id: 3, name: "Adjustment In", direction: "in" },
+      { id: 4, name: "Adjustment Out", direction: "out" }
+    ];
   }
 }
 
@@ -157,6 +164,18 @@ export async function createStockAdjustment(formData: FormData) {
   }
 
   try {
+    console.log("Creating stock adjustment:", { variantId, movementTypeId, quantity, notes });
+    
+    // Check if inventory_ledger table exists
+    try {
+      await query("SELECT 1 FROM inventory_ledger LIMIT 1");
+    } catch (tableError) {
+      console.error("inventory_ledger table doesn't exist:", tableError);
+      return { 
+        error: "Inventory system not properly set up. Please run the database migration script first." 
+      };
+    }
+
     // Get current balance for this product (using product id instead of variant_id)
     const lastEntry = await queryOne<BalanceRow>(`
       SELECT balance FROM inventory_ledger
@@ -166,14 +185,20 @@ export async function createStockAdjustment(formData: FormData) {
     `, [variantId]);
 
     const currentBalance = lastEntry?.balance ?? 0;
+    console.log("Current balance:", currentBalance);
 
     // Get movement type direction
     const movType = await queryOne<DirectionRow>(`
       SELECT direction FROM inventory_movement_types WHERE id = ?
     `, [parseInt(movementTypeId)]);
 
-    const direction = movType?.direction ?? "in";
+    if (!movType) {
+      return { error: "Invalid movement type selected." };
+    }
+
+    const direction = movType.direction;
     const newBalance = direction === "out" ? currentBalance - quantity : currentBalance + quantity;
+    console.log("New balance will be:", newBalance);
 
     const ledgerId = generateUUID();
     await query(`
