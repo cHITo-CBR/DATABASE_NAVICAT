@@ -34,6 +34,7 @@ export default function SignupPage() {
   };
 
   if (state?.success) {
+    const isAutoApproved = state.autoapproved;
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F7F6] py-12 px-4 sm:px-6 lg:px-8 font-sans">
         <Card className="w-full max-w-md shadow-[0_8px_30px_rgb(0,0,0,0.04)] border-0 rounded-[24px] text-center p-6">
@@ -42,10 +43,16 @@ export default function SignupPage() {
             <CardTitle className="text-2xl font-bold text-[#005914]">Registration Successful!</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600 font-medium">Waiting for admin approval. You will be able to log in once your account is active.</p>
+            {isAutoApproved ? (
+              <p className="text-gray-600 font-medium">Your buyer account is approved! You can log in now and start browsing.</p>
+            ) : (
+              <p className="text-gray-600 font-medium">Waiting for admin approval. You will be able to log in once your account is active.</p>
+            )}
           </CardContent>
           <CardFooter className="flex justify-center mt-4">
-            <Link href="/login" className="text-[#005914] hover:underline font-bold bg-[#E2EBE5] px-6 py-2.5 rounded-full">Return to Login</Link>
+            <Link href="/login" className="text-[#005914] hover:underline font-bold bg-[#E2EBE5] px-6 py-2.5 rounded-full">
+              {isAutoApproved ? "Log In Now" : "Return to Login"}
+            </Link>
           </CardFooter>
         </Card>
       </div>

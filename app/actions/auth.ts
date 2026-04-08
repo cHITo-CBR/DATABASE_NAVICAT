@@ -49,13 +49,28 @@ export async function registerUser(prevState: any, formData: FormData) {
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = generateUUID();
 
+    // Buyers are auto-approved; other roles require admin approval
+    const isBuyer = roleName === "buyer";
+    const status = isBuyer ? "approved" : "pending";
+    const isActive = isBuyer ? fromBoolean(true) : fromBoolean(false);
+
     await insert(
       `INSERT INTO users (id, full_name, email, phone_number, password_hash, role_id, status, is_active, created_at) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [userId, fullName, email, phone, passwordHash, role.id, "pending", fromBoolean(false)]
+      [userId, fullName, email, phone, passwordHash, role.id, status, isActive]
     );
 
-    return { success: true };
+    // Auto-create a store/customer entry for buyers so salesmen can be assigned
+    if (isBuyer) {
+      const customerId = generateUUID();
+      await insert(
+        `INSERT INTO customers (id, store_name, contact_person, email, phone, is_active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [customerId, fullName, fullName, email, phone || null, fromBoolean(true)]
+      );
+    }
+
+    return { success: true, autoapproved: isBuyer };
   } catch (error: any) {
     return { error: error.message || "Registration failed." };
   }

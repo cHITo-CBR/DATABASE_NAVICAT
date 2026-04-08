@@ -1,6 +1,6 @@
 "use server";
 
-import { query, queryOne, insert, generateUUID, fromBoolean, toBoolean } from "@/lib/db-helpers";
+import { query, queryOne, insert, update, generateUUID, fromBoolean, toBoolean } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 import { RowDataPacket } from "mysql2/promise";
 
@@ -149,5 +149,35 @@ export async function getSalesmanCustomers(salesmanId: string): Promise<Customer
   } catch (error) {
     console.error("Error fetching salesman customers:", error);
     return [];
+  }
+}
+
+export async function getUnassignedCustomers(): Promise<CustomerRow[]> {
+  try {
+    const customers = await query<CustomerRowDB>(
+      `SELECT c.*, NULL as salesman_name
+       FROM customers c
+       WHERE c.assigned_salesman_id IS NULL AND c.is_active = ?
+       ORDER BY c.created_at DESC`,
+      [fromBoolean(true)]
+    );
+    return customers.map(c => ({ ...c, is_active: toBoolean(c.is_active) }));
+  } catch (error) {
+    console.error("Error fetching unassigned customers:", error);
+    return [];
+  }
+}
+
+export async function assignCustomerToSalesman(customerId: string, salesmanId: string) {
+  try {
+    await update(
+      "UPDATE customers SET assigned_salesman_id = ? WHERE id = ?",
+      [salesmanId, customerId]
+    );
+    revalidatePath("/salesman/customers");
+    revalidatePath("/admin/customers");
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message || "Failed to assign customer." };
   }
 }
