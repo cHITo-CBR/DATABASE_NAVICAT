@@ -59,8 +59,6 @@ export default function SupervisorDashboardPage() {
   const kpiCards = [
     { label: "Active Salesmen", value: kpis?.activeSalesmen ?? 0, icon: Users, color: "text-blue-600", bg: "bg-blue-50/50" },
     { label: "Visits Today", value: kpis?.visitsToday ?? 0, icon: MapPin, color: "text-teal-600", bg: "bg-teal-50/50" },
-    { label: "Submitted Callsheets", value: kpis?.submittedCallsheets ?? 0, icon: FileText, color: "text-amber-600", bg: "bg-amber-50/50" },
-    { label: "Pending Reviews", value: kpis?.pendingCallsheetReviews ?? 0, icon: Clock, color: kpis?.pendingCallsheetReviews ? "text-orange-600" : "text-gray-900", bg: kpis?.pendingCallsheetReviews ? "bg-orange-50/50" : "" },
     { label: "Pending Requests", value: kpis?.pendingRequests ?? 0, icon: ShoppingBag, color: kpis?.pendingRequests ? "text-purple-600" : "text-gray-900", bg: kpis?.pendingRequests ? "bg-purple-50/50" : "" },
     { label: "Pending Bookings", value: kpis?.pendingBookings ?? 0, icon: ShoppingBag, color: kpis?.pendingBookings ? "text-indigo-600" : "text-gray-900", bg: "" },
     { label: "Monthly Sales", value: `₱${(kpis?.monthlySalesTotal ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`, icon: DollarSign, color: "text-green-600", bg: "bg-green-50/50", isText: true },
@@ -71,7 +69,6 @@ export default function SupervisorDashboardPage() {
 
   const allActivity = [
     ...(activity?.visits || []).map((v: any) => ({ type: "visit", label: `${v.users?.full_name} visited ${v.customers?.store_name}`, date: v.created_at })),
-    ...(activity?.callsheets || []).map((c: any) => ({ type: "callsheet", label: `${c.users?.full_name} — callsheet ${c.status}`, date: c.created_at })),
     ...(activity?.requests || []).map((r: any) => ({ type: "request", label: `${r.users?.full_name} — request for ${r.customers?.store_name}`, date: r.created_at })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
 
@@ -194,11 +191,9 @@ export default function SupervisorDashboardPage() {
                 {allActivity.map((item, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50/50 hover:bg-gray-50 transition-colors">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${item.type === "visit" ? "bg-teal-50 text-teal-600" :
-                      item.type === "callsheet" ? "bg-amber-50 text-amber-600" :
                         "bg-purple-50 text-purple-600"
                       }`}>
                       {item.type === "visit" ? <MapPin className="w-4 h-4" /> :
-                        item.type === "callsheet" ? <FileText className="w-4 h-4" /> :
                           <ShoppingBag className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">

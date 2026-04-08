@@ -40,10 +40,8 @@ export default function SalesmanDashboardPage() {
           getSalesmanRecentActivity(userId)
         ]);
         setKpis(kpiData);
-        // Combine visits and callsheets into a flat array for the feed
         const combined = [
-          ...(recentData?.visits || []),
-          ...(recentData?.callsheets || [])
+          ...(recentData?.visits || [])
         ].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setRecent(combined);
       }
@@ -72,13 +70,11 @@ export default function SalesmanDashboardPage() {
 
   const kpiHighlights = [
     { label: "Today's Visits", value: kpis?.todayVisits ?? 0, icon: MapPin, gradient: "from-blue-500 to-cyan-400", bg: "bg-blue-50", ring: "ring-blue-100" },
-    { label: "Draft Callsheets", value: kpis?.pendingCallsheets ?? 0, icon: FileCheck, gradient: "from-amber-500 to-orange-400", bg: "bg-amber-50", ring: "ring-amber-100" },
     { label: "Bookings", value: kpis?.confirmedBookings ?? 0, icon: ShoppingBag, gradient: "from-emerald-500 to-green-400", bg: "bg-green-50", ring: "ring-green-100" },
   ];
 
   const quickActions = [
     { label: "New Visit", href: "/salesman/customers", icon: Plus, gradient: "from-[#005914] to-[#00802b]", shadow: "shadow-green-900/20" },
-    { label: "Callsheet", href: "/salesman/callsheets/new", icon: FileCheck, gradient: "from-amber-500 to-orange-500", shadow: "shadow-amber-500/20" },
     { label: "Request", href: "/salesman/requests/new", icon: AlertCircle, gradient: "from-blue-500 to-indigo-500", shadow: "shadow-blue-500/20" },
     { label: "Booking", href: "/salesman/bookings/new", icon: ShoppingBag, gradient: "from-purple-500 to-pink-500", shadow: "shadow-purple-500/20" },
   ];

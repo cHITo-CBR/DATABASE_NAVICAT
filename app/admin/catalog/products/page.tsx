@@ -223,15 +223,19 @@ export default function ProductCatalogPage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="itemsPerCase">Packing (per case)</Label>
-                <Input id="itemsPerCase" name="itemsPerCase" type="number" placeholder="e.g. 48" defaultValue={editingProduct?.items_per_case || ""} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="netWeight">Size (Net Weight)</Label>
-                <Input id="netWeight" name="netWeight" placeholder="e.g. 155g" defaultValue={editingProduct?.net_weight || ""} />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="packagingId">Packaging</Label>
+              <Select name="packagingId" defaultValue={editingProduct?.packaging_id?.toString() || ""}>
+                <SelectTrigger><SelectValue placeholder="Select packaging" /></SelectTrigger>
+                <SelectContent>
+                  {packagingTypes.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}{p.description ? ` - ${p.description}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">Total packaging and size (Net Weight)</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="totalCases">Total Cases</Label>
@@ -351,7 +355,7 @@ export default function ProductCatalogPage() {
                         `₱${p.packaging_price.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-gray-500 font-medium">
-                      {p.items_per_case || p.net_weight ? `${p.items_per_case || ''}${p.items_per_case && p.net_weight ? ' - ' : ''}${p.net_weight || ''}` : "—"}
+                      {p.packaging_type_name ?? "—"}
                     </TableCell>
                     <TableCell className="text-gray-700 font-semibold">
                       <span className={`px-2 py-1 rounded-md text-xs ${

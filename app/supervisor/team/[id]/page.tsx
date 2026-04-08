@@ -13,7 +13,7 @@ export default function SalesmanDetailPage() {
   const params = useParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"visits" | "callsheets" | "requests" | "bookings">("visits");
+  const [activeTab, setActiveTab] = useState<"visits" | "requests" | "bookings">("visits");
 
   useEffect(() => {
     if (params.id) {
@@ -29,10 +29,9 @@ export default function SalesmanDetailPage() {
     return <div className="text-center py-16 text-gray-400">Salesman not found</div>;
   }
 
-  const { profile, visits, callsheets, requests, bookings } = data;
+  const { profile, visits, requests, bookings } = data;
   const tabs = [
     { key: "visits", label: "Visits", count: visits.length, icon: MapPin },
-    { key: "callsheets", label: "Callsheets", count: callsheets.length, icon: FileText },
     { key: "requests", label: "Requests", count: requests.length, icon: ShoppingBag },
     { key: "bookings", label: "Bookings", count: bookings.length, icon: Clock },
   ] as const;
@@ -98,30 +97,6 @@ export default function SalesmanDetailPage() {
                     <TableCell className="font-medium">{v.customers?.store_name || "—"}</TableCell>
                     <TableCell>{new Date(v.visit_date || v.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-gray-500 truncate max-w-[200px]">{v.notes || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-          {activeTab === "callsheets" && (
-            <Table>
-              <TableHeader className="bg-gray-50/50">
-                <TableRow><TableHead>Store</TableHead><TableHead>Round</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {callsheets.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-8 text-gray-400">No callsheets</TableCell></TableRow> : callsheets.map((c: any) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.customers?.store_name || "—"}</TableCell>
-                    <TableCell>R{c.round_number || 1}</TableCell>
-                    <TableCell>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-md ${
-                        c.status === "approved" ? "bg-green-50 text-green-700" :
-                        c.status === "submitted" ? "bg-blue-50 text-blue-700" :
-                        c.status === "rejected" ? "bg-red-50 text-red-700" :
-                        "bg-gray-100 text-gray-700"
-                      }`}>{c.status}</span>
-                    </TableCell>
-                    <TableCell>{new Date(c.visit_date || c.created_at).toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

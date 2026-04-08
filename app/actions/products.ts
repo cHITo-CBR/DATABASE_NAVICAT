@@ -75,7 +75,7 @@ export async function getProducts(search?: string): Promise<ProductRow[]> {
       SELECT p.*, 
              pc.name as category_name, 
              b.name as brand_name,
-             pt.name as packaging_type_name,
+             CONCAT(pt.name, CASE WHEN pt.description IS NOT NULL AND pt.description != '' THEN CONCAT(' - ', pt.description) ELSE '' END) as packaging_type_name,
              p.packaging_price
       FROM products p
       LEFT JOIN product_categories pc ON p.category_id = pc.id
@@ -118,8 +118,7 @@ export async function createProduct(formData: FormData) {
   const description = formData.get("description") as string;
   const categoryId = formData.get("categoryId") as string;
   const brandId = formData.get("brandId") as string;
-  const itemsPerCase = formData.get("itemsPerCase") as string;
-  const netWeight = formData.get("netWeight") as string;
+  const packagingId = formData.get("packagingId") as string;
   const totalCases = formData.get("totalCases") as string;
   const packagingPrice = formData.get("packagingPrice") as string;
   const imageUrl = formData.get("imageUrl") as string;
@@ -148,19 +147,19 @@ export async function createProduct(formData: FormData) {
     console.log("Form data received:");
     console.log("- packagingPrice:", packagingPrice);
     console.log("- packagingPrice parsed:", packagingPrice ? parseFloat(packagingPrice) : 0.00);
+    console.log("- packagingId:", packagingId);
 
     console.log("Creating product with packaging price:", packagingPrice);
     
     await insert(
-      `INSERT INTO products (id, name, description, image_url, items_per_case, net_weight, total_cases, packaging_price, category_id, brand_id, is_active, is_archived)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (id, name, description, image_url, packaging_id, total_cases, packaging_price, category_id, brand_id, is_active, is_archived)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         productId,
         name,
         description || null,
         finalImageUrl,
-        itemsPerCase ? parseInt(itemsPerCase) : 0,
-        netWeight || null,
+        packagingId ? parseInt(packagingId) : null,
         totalCases ? parseInt(totalCases) : 0,
         packagingPrice ? parseFloat(packagingPrice) : 0.00,
         categoryId ? parseInt(categoryId) : null,
@@ -231,8 +230,7 @@ export async function getArchivedProducts(): Promise<ProductRow[]> {
       `SELECT p.*, 
               pc.name as category_name, 
               b.name as brand_name,
-              pt.name as total_packaging,
-              pt.description as net_weight
+              CONCAT(pt.name, CASE WHEN pt.description IS NOT NULL AND pt.description != '' THEN CONCAT(' - ', pt.description) ELSE '' END) as packaging_type_name
        FROM products p
        LEFT JOIN product_categories pc ON p.category_id = pc.id
        LEFT JOIN brands b ON p.brand_id = b.id
@@ -279,8 +277,7 @@ export async function updateProduct(id: string, formData: FormData) {
   const description = formData.get("description") as string;
   const categoryId = formData.get("categoryId") as string;
   const brandId = formData.get("brandId") as string;
-  const itemsPerCase = formData.get("itemsPerCase") as string;
-  const netWeight = formData.get("netWeight") as string;
+  const packagingId = formData.get("packagingId") as string;
   const totalCases = formData.get("totalCases") as string;
   const packagingPrice = formData.get("packagingPrice") as string;
   const imageUrl = formData.get("imageUrl") as string;
@@ -290,17 +287,17 @@ export async function updateProduct(id: string, formData: FormData) {
 
   try {
     console.log("Updating product with packaging price:", packagingPrice);
+    console.log("Updating product with packaging id:", packagingId);
     
     await update(
       `UPDATE products 
-       SET name = ?, description = ?, image_url = ?, items_per_case = ?, net_weight = ?, total_cases = ?, packaging_price = ?, category_id = ?, brand_id = ?
+       SET name = ?, description = ?, image_url = ?, packaging_id = ?, total_cases = ?, packaging_price = ?, category_id = ?, brand_id = ?
        WHERE id = ?`,
       [
         name,
         description || null,
         imageUrl || null,
-        itemsPerCase ? parseInt(itemsPerCase) : 0,
-        netWeight || null,
+        packagingId ? parseInt(packagingId) : null,
         totalCases ? parseInt(totalCases) : 0,
         packagingPrice ? parseFloat(packagingPrice) : 0.00,
         categoryId ? parseInt(categoryId) : null,

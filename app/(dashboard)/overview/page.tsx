@@ -84,12 +84,6 @@ export default async function OverviewPage() {
             color="bg-[#3B8BEB]" 
           />
           <StatMiniCard 
-            icon={ClipboardCheck} 
-            value={data.stats.draft_callsheets} 
-            label="Draft Callsheets" 
-            color="bg-[#FD9F2A]" 
-          />
-          <StatMiniCard 
             icon={ShoppingBag} 
             value={data.stats.bookings} 
             label="Bookings" 
@@ -107,7 +101,6 @@ export default async function OverviewPage() {
         
         <div className="grid grid-cols-2 gap-4">
           <ActionButton label="New Visit" icon={Plus} color="bg-[#0D5E2D]" />
-          <ActionButton label="Callsheet" icon={ClipboardCheck} color="bg-orange-500" />
           <ActionButton label="Request" icon={HelpCircle} color="bg-blue-500" />
           <ActionButton label="Booking" icon={ShoppingBag} color="bg-purple-500" />
         </div>
