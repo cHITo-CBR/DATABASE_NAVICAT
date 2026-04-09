@@ -1,94 +1,149 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Package, Search, Loader2, Filter } from "lucide-react";
+import { Search, Loader2, Heart } from "lucide-react";
 import Link from "next/link";
 import { getBuyerProducts, getProductFilters } from "@/app/actions/buyer-actions";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
 
-export default function BuyerProductsPage() {
+export default function MobileShopProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [filters, setFilters] = useState<any>({ categories: [], brands: [] });
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<number | undefined>();
-  const [brandId, setBrandId] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([getBuyerProducts(), getProductFilters()]).then(([prods, fils]) => {
-      setProducts(prods); setFilters(fils); setLoading(false);
+      setProducts(prods); 
+      setFilters(fils); 
+      setLoading(false);
     });
   }, []);
 
   useEffect(() => {
-    getBuyerProducts(search || undefined, categoryId, brandId).then(setProducts);
-  }, [search, categoryId, brandId]);
-
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-[#005914]" /></div>;
+    getBuyerProducts(search || undefined, categoryId, undefined).then(setProducts);
+  }, [search, categoryId]);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Product Catalog</h1>
-        <p className="text-gray-500 text-sm">Browse available products and submit orders.</p>
+    <div className="pb-8 pt-2">
+      {/* Header Section */}
+      <div className="mb-6">
+        <h1 className="text-[28px] font-bold text-gray-900 tracking-tight leading-tight">
+          Shop Products
+        </h1>
+        <p className="text-[13px] text-gray-500 mt-1 font-medium">
+          Browse and book your items
+        </p>
       </div>
 
-      {/* Search & Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input placeholder="Search products..." className="pl-10 bg-white border-gray-200 rounded-xl" value={search} onChange={(e) => setSearch(e.target.value)} />
+      {/* Search Bar */}
+      <div className="relative mb-6">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input 
+          type="text"
+          placeholder="Search for unique pieces..." 
+          className="w-full bg-[#F1F3F5] text-sm text-gray-700 rounded-full py-3.5 pl-11 pr-4 outline-none placeholder:text-gray-400 focus:ring-2 focus:ring-[#4B5E65]/20 transition-all"
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)} 
+        />
+      </div>
+
+      {/* Filter Chips */}
+      <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar mb-8 pb-2 -mx-6 px-6">
+        <button 
+          onClick={() => setCategoryId(undefined)}
+          className={cn(
+            "px-5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors",
+            categoryId === undefined 
+              ? "bg-[#4B5E65] text-white shadow-md shadow-[#4B5E65]/20" 
+              : "bg-white text-gray-600 border border-gray-100"
+          )}
+        >
+          All Items
+        </button>
+        {filters.categories.map((c: any) => (
+          <button 
+            key={c.id}
+            onClick={() => setCategoryId(c.id)}
+            className={cn(
+              "px-5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors",
+              categoryId === c.id 
+                ? "bg-[#4B5E65] text-white shadow-md shadow-[#4B5E65]/20" 
+                : "bg-white text-gray-600 border border-gray-100"
+            )}
+          >
+            {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Loading Skeleton */}
+      {loading ? (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="animate-pulse flex flex-col">
+              <div className="w-full aspect-[4/5] bg-gray-200 rounded-[28px] mb-3"></div>
+              <div className="w-3/4 h-4 bg-gray-200 rounded-md mb-1.5"></div>
+              <div className="w-1/2 h-4 bg-gray-200 rounded-md mb-3"></div>
+              <div className="w-full h-10 bg-gray-200 rounded-full"></div>
+            </div>
+          ))}
         </div>
-        <select className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700" value={categoryId || ""} onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : undefined)}>
-          <option value="">All Categories</option>
-          {filters.categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700" value={brandId || ""} onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : undefined)}>
-          <option value="">All Brands</option>
-          {filters.brands.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-      </div>
-
-      {/* Products Grid */}
-      {products.length === 0 ? (
-        <div className="py-16 text-center text-gray-400">
-          <Package className="w-12 h-12 mx-auto mb-3" />
-          <p className="text-sm font-medium">No products found</p>
+      ) : products.length === 0 ? (
+        <div className="py-20 flex flex-col items-center justify-center text-gray-400">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Search className="w-6 h-6 text-gray-300" />
+          </div>
+          <p className="text-[15px] font-medium text-gray-500">No products found</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {products.map((p) => (
-            <Link key={p.id} href={`/customers/catalog/products/${p.id}`}>
-              <Card className="shadow-sm border-0 rounded-xl hover:shadow-md transition-all cursor-pointer group h-full">
-                <CardContent className="p-4">
-                  <div className="w-full aspect-square bg-gray-100 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
-                    {p.product_images?.find((img: any) => img.is_primary)?.image_url || p.product_images?.[0]?.image_url ? (
-                      <img src={p.product_images?.find((img: any) => img.is_primary)?.image_url || p.product_images?.[0]?.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    ) : (
-                      <Package className="w-10 h-10 text-gray-300" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-900 truncate">{p.name}</p>
-                    {p.brands?.name && <p className="text-[10px] text-gray-400 font-medium mt-0.5">{p.brands.name}</p>}
-                    <div className="flex items-center gap-2 mt-2">
-                      {p.product_categories?.name && (
-                        <span className="text-[10px] font-bold bg-green-50 text-[#005914] px-2 py-0.5 rounded-full">{p.product_categories.name}</span>
-                      )}
-                      {p.total_packaging && (
-                        <span className="text-[10px] text-gray-400">{p.total_packaging}</span>
-                      )}
+        /* Product Grid */
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8">
+          {products.map((p) => {
+            const imgUrl = p.product_images?.find((img: any) => img.is_primary)?.image_url || p.product_images?.[0]?.image_url;
+            return (
+              <div key={p.id} className="flex flex-col group">
+                <div className="relative w-full aspect-[4/5] rounded-[28px] overflow-hidden mb-3 bg-[#1A1D20]">
+                  {imgUrl ? (
+                    <Image
+                      src={imgUrl}
+                      alt={p.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-yellow-400/20 flex items-center justify-center text-yellow-500 font-bold text-xs">
+                        {p.name.substring(0, 1)}
+                      </div>
                     </div>
-                    {p.net_weight && <p className="text-[10px] text-gray-400 mt-1">Net Wt: {p.net_weight}</p>}
-                    {p.product_variants?.[0]?.unit_price && (
-                      <p className="text-sm font-bold text-[#005914] mt-2">₱{Number(p.product_variants[0].unit_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  )}
+                  <button className="absolute top-3 right-3 w-8 h-8 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors">
+                    <Heart className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                <h3 className="font-bold text-[14px] leading-tight text-gray-900 mb-1 line-clamp-2">
+                  {p.name}
+                </h3>
+                
+                {p.product_variants?.[0]?.unit_price && (
+                  <p className="text-[14px] font-bold text-[#556987] mb-3">
+                    ${Number(p.product_variants[0].unit_price).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  </p>
+                )}
+                
+                <Link 
+                  href={`/customers/catalog/products/${p.id}`}
+                  className="mt-auto w-full py-2.5 bg-[#E6EAF0] hover:bg-[#D9DEE6] text-[#4B5E65] text-[13px] font-bold rounded-full text-center transition-colors"
+                >
+                  Book Now
+                </Link>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

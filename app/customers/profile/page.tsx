@@ -1,72 +1,130 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, User, Mail, Phone, Shield, Calendar, MapPin } from "lucide-react";
-import { getCurrentUser } from "@/app/actions/auth";
-import { getBuyerProfile } from "@/app/actions/buyer-actions";
+import { Loader2, User, Bell, Clock, HelpCircle, LogOut, ChevronRight, Edit2 } from "lucide-react";
+import { getCurrentUser, logoutUser } from "@/app/actions/auth";
+import { getBuyerProfile, getBuyerOrders } from "@/app/actions/buyer-actions";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 
-export default function BuyerProfilePage() {
+export default function MobileUserProfilePage() {
   const [data, setData] = useState<any>(null);
+  const [ordersCount, setOrdersCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     async function load() {
       const session = await getCurrentUser();
       if (session?.user) {
         const profile = await getBuyerProfile(session.user.id);
+        const orders = await getBuyerOrders(session.user.id);
         setData(profile);
+        setOrdersCount(orders.length);
       }
       setLoading(false);
     }
     load();
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-[#005914]" /></div>;
-  if (!data?.user) return <div className="text-center py-16 text-gray-400">Could not load profile</div>;
+  const handleLogout = async () => {
+    await logoutUser();
+    router.push("/login");
+  };
 
-  return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">My Profile</h1>
-        <p className="text-gray-500 text-sm">Your account details and store information.</p>
-      </div>
-
-      <Card className="shadow-sm border-0 rounded-xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#005914] to-emerald-500 p-8">
-          <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-white font-black text-2xl">
-              {data.user.full_name ? data.user.full_name.substring(0, 2).toUpperCase() : "BU"}
-            </div>
-            <div className="text-white">
-              <h2 className="text-2xl font-bold">{data.user.full_name || "Buyer"}</h2>
-              <p className="text-green-100 text-sm mt-1 flex items-center gap-1.5"><Shield className="w-4 h-4" /> Buyer</p>
-            </div>
+  if (loading) {
+    return (
+      <div className="pb-8 pt-6 space-y-6">
+        <div className="bg-white rounded-[32px] p-8 shadow-[0_4px_24px_rgba(0,0,0,0.02)] flex flex-col items-center animate-pulse">
+          <div className="w-24 h-24 bg-gray-200 rounded-full mb-4"></div>
+          <div className="w-32 h-5 bg-gray-200 rounded-md mb-2"></div>
+          <div className="w-48 h-3 bg-gray-200 rounded-md mb-8"></div>
+          <div className="flex gap-4 w-full">
+            <div className="flex-1 h-20 bg-gray-200 rounded-[20px]"></div>
+            <div className="flex-1 h-20 bg-gray-200 rounded-[20px]"></div>
           </div>
         </div>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
-              <Mail className="w-5 h-5 text-gray-400" />
-              <div><p className="text-xs text-gray-400 font-medium">Email</p><p className="font-medium text-gray-900">{data.user.email}</p></div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
-              <Phone className="w-5 h-5 text-gray-400" />
-              <div><p className="text-xs text-gray-400 font-medium">Phone</p><p className="font-medium text-gray-900">{data.user.phone_number || "Not set"}</p></div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
-              <Calendar className="w-5 h-5 text-gray-400" />
-              <div><p className="text-xs text-gray-400 font-medium">Member Since</p><p className="font-medium text-gray-900">{data.user.created_at ? new Date(data.user.created_at).toLocaleDateString() : "—"}</p></div>
-            </div>
-            {data.customer && (
-              <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
-                <MapPin className="w-5 h-5 text-gray-400" />
-                <div><p className="text-xs text-gray-400 font-medium">Store</p><p className="font-medium text-gray-900">{data.customer.store_name || "—"}</p></div>
-              </div>
+      </div>
+    );
+  }
+
+  const user = data?.user || {};
+
+  return (
+    <div className="pb-8 pt-6">
+      {/* Profile Card */}
+      <div className="bg-white rounded-[32px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.02)] flex flex-col items-center text-center relative mb-8 border border-gray-50">
+        <div className="relative mb-4">
+          <div className="w-[100px] h-[100px] rounded-full overflow-hidden bg-[#F1F3F5] flex items-center justify-center">
+            {user.profile_image_url ? (
+               <Image src={user.profile_image_url} alt="Profile" fill className="object-cover" />
+            ) : (
+               <div className="text-4xl text-gray-300 font-bold">
+                 {user.full_name ? user.full_name.substring(0, 1).toUpperCase() : "U"}
+               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+          <button className="absolute bottom-0 right-0 w-8 h-8 bg-[#4B5E65] text-white rounded-full flex items-center justify-center shadow-md shadow-[#4B5E65]/30">
+            <Edit2 className="w-4 h-4" />
+          </button>
+        </div>
+
+        <h2 className="text-[22px] font-bold text-gray-900 leading-tight">
+          {user.full_name || "Guest User"}
+        </h2>
+        <p className="text-[13px] text-gray-500 font-medium mt-1 mb-6">
+          {user.email || "guest@example.com"}
+        </p>
+
+        <div className="flex gap-4 w-full">
+          <div className="flex-1 bg-[#F8F9FB] rounded-[20px] p-4 flex flex-col items-center justify-center text-center transition-transform active:scale-95">
+            <span className="text-[20px] font-bold text-[#4B5E65] leading-none mb-1">{ordersCount}</span>
+            <span className="text-[10px] items-center text-gray-400 font-bold tracking-wider uppercase">Bookings</span>
+          </div>
+          <div className="flex-1 bg-[#F8F9FB] rounded-[20px] p-4 flex flex-col items-center justify-center text-center transition-transform active:scale-95">
+            <span className="text-[20px] font-bold text-[#4B5E65] leading-none mb-1">4</span>
+            <span className="text-[10px] text-gray-400 font-bold tracking-wider uppercase">Favorites</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Settings & Preferences */}
+      <h3 className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-4 px-2">
+        Settings & Preferences
+      </h3>
+
+      <div className="space-y-4 mb-8">
+        {[
+          { icon: User, title: "Account Settings", desc: "Personal info and security" },
+          { icon: Bell, title: "Notification Preferences", desc: "Manage alerts and emails" },
+          { icon: Clock, title: "Order History", desc: "Track your recent purchases" },
+          { icon: HelpCircle, title: "Help Center", desc: "FAQs and support chat" },
+        ].map((item, i) => (
+          <div key={i} className="flex items-center gap-4 bg-white p-4 rounded-[24px] shadow-[0_2px_12px_rgba(0,0,0,0.015)] border border-gray-50 active:scale-95 transition-transform cursor-pointer">
+            <div className="w-12 h-12 bg-[#F1F3F5] rounded-full flex items-center justify-center text-[#4B5E65] shrink-0">
+              <item.icon className="w-5 h-5 stroke-[1.5]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-[15px] font-bold text-gray-900 leading-tight mb-0.5">{item.title}</h4>
+              <p className="text-[13px] text-gray-500 font-medium truncate">{item.desc}</p>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />
+          </div>
+        ))}
+      </div>
+
+      {/* Logout Button */}
+      <button 
+        onClick={handleLogout}
+        className="w-full flex items-center justify-center gap-2 py-4 bg-[#FF6B6B] text-white rounded-full font-bold text-[15px] shadow-lg shadow-[#FF6B6B]/25 active:opacity-80 transition-opacity"
+      >
+        <LogOut className="w-5 h-5 stroke-[2]" />
+        Logout
+      </button>
+
+      <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-6 mb-8">
+        VERSION 2.4.0 • FLOWSTOCK
+      </p>
     </div>
   );
 }
