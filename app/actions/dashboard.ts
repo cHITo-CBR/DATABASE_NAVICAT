@@ -4,7 +4,7 @@ import { RowDataPacket } from "mysql2";
 
 export interface DashboardKPIs {
   totalUsers: number;
-  pendingApprovals: number;
+  successfulOrdersCount: number;
   totalCustomers: number;
   totalProducts: number;
   lowStockItems: number;
@@ -13,7 +13,7 @@ export interface DashboardKPIs {
   pipelineGrowth: number;      // New: Growth percentage
   goalEfficiency: number;      // New: Calculated efficiency
   hubStatus: 'operational' | 'maintenance' | 'offline'; // New: System status
-  strategicGrowthStatus: string; // New: Growth status text
+  totalEarnings: number; // New: Total earnings from successful orders
 }
 
 export interface RecentTransaction {
@@ -49,12 +49,19 @@ async function safeCount(table: string, filter?: { column: string; value: string
 }
 
 export async function getDashboardKPIs(): Promise<DashboardKPIs> {
-  const [totalUsers, pendingApprovals, totalCustomers, totalProducts] = await Promise.all([
+  const [totalUsers, totalCustomers, totalProducts] = await Promise.all([
     safeCount("users"),
-    safeCount("users", { column: "status", value: "pending" }),
     safeCount("users", { column: "role_id", value: 4 }), // Role ID 4 is for 'buyer'
     safeCount("products"),
   ]);
+
+  let successfulOrdersCount = 0;
+  try {
+    const ordersResult = await queryOne<CountRow>(`SELECT COUNT(*) AS count FROM sales_transactions WHERE status = 'completed'`);
+    successfulOrdersCount = ordersResult?.count ?? 0;
+  } catch {
+    successfulOrdersCount = 0;
+  }
 
   // Get low stock items (products with total_cases < 10)
   let lowStockItems = 0;
@@ -87,17 +94,20 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
     totalUsers > 0 && totalProducts > 0 ? 'operational' : 
     totalUsers > 0 ? 'maintenance' : 'offline';
 
-  // Determine strategic growth status
-  const strategicGrowthStatus = 
-    pipelineGrowth > 10 ? 'Accelerated' :
-    pipelineGrowth > 5 ? 'Steady' :
-    pipelineGrowth > 0 ? 'Moderate' : 'No Data';
+  // Calculate total earnings
+  let totalEarnings = 0;
+  try {
+    const earningsResult = await queryOne<{ total: number } & RowDataPacket>(`SELECT COALESCE(SUM(total_amount), 0) as total FROM sales_transactions WHERE status = 'completed'`);
+    totalEarnings = earningsResult?.total ?? 0;
+  } catch {
+    totalEarnings = 0;
+  }
 
   const totalSales = 0; // Keep existing field
 
   return {
     totalUsers,
-    pendingApprovals,
+    successfulOrdersCount,
     totalCustomers,
     totalProducts,
     lowStockItems,
@@ -106,7 +116,7 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
     pipelineGrowth,
     goalEfficiency,
     hubStatus,
-    strategicGrowthStatus,
+    totalEarnings,
   };
 }
 

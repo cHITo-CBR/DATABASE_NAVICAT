@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PlusCircle, Building2, Phone, MapPin, Loader2, Inbox } from "lucide-react";
 import {
-  getCustomers, getCustomerStats, createCustomer, getSalesmenForAssignment,
+  getCustomers, getCustomerStats, createCustomer, getSalesmenForAssignment, getRegisteredBuyers,
   type CustomerRow, type CustomerStats,
 } from "@/app/actions/customers";
 
@@ -27,20 +27,24 @@ export default function CustomersManagementPage() {
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [stats, setStats] = useState<CustomerStats>({ totalActive: 0, newThisMonth: 0 });
   const [salesmen, setSalesmen] = useState<{ id: string; full_name: string }[]>([]);
+  const [buyers, setBuyers] = useState<{ id: string; full_name: string; email: string }[]>([]);
+  const [emailValue, setEmailValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function loadData() {
     setLoading(true);
-    const [custData, statsData, salesmenData] = await Promise.all([
+    const [custData, statsData, salesmenData, buyersData] = await Promise.all([
       getCustomers(),
       getCustomerStats(),
       getSalesmenForAssignment(),
+      getRegisteredBuyers(),
     ]);
     setCustomers(custData);
     setStats(statsData);
     setSalesmen(salesmenData);
+    setBuyers(buyersData);
     setLoading(false);
   }
 
@@ -54,6 +58,7 @@ export default function CustomersManagementPage() {
     setSaving(false);
     if (result.success) {
       setDialogOpen(false);
+      setEmailValue("");
       loadData();
     } else {
       alert(result.error || "Failed to create customer.");
@@ -91,7 +96,17 @@ export default function CustomersManagementPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2 col-span-2">
                   <Label htmlFor="storeName">Store / Customer Name</Label>
-                  <Input id="storeName" name="storeName" required placeholder="e.g. Mega Mart Grocery" />
+                  <Select name="storeName" required onValueChange={(val) => {
+                    const buyer = buyers.find(b => b.full_name === val);
+                    if (buyer) setEmailValue(buyer.email || "");
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select registered person" /></SelectTrigger>
+                    <SelectContent>
+                      {buyers.map((b) => (
+                        <SelectItem key={b.id} value={b.full_name}>{b.full_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contactPerson">Contact Person</Label>
@@ -103,7 +118,7 @@ export default function CustomersManagementPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" name="email" type="email" placeholder="email@store.com" />
+                  <Input id="email" name="email" type="email" placeholder="email@store.com" value={emailValue} onChange={e => setEmailValue(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>
@@ -199,7 +214,7 @@ export default function CustomersManagementPage() {
                         <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {c.city || c.address}</div>
                       ) : "—"}
                     </TableCell>
-                    <TableCell className="text-gray-900 font-medium">{c.users?.full_name ?? "Unassigned"}</TableCell>
+                    <TableCell className="text-gray-900 font-medium">{c.salesman_name || "Unassigned"}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" className="h-8">View Records</Button>
                     </TableCell>

@@ -31,10 +31,6 @@ import { getCurrentUser, logoutUser } from "@/app/actions/auth";
 
 const browseItems = [
   { title: "Products", path: "/customers/catalog/products", icon: Package },
-  { title: "Categories", path: "/customers/catalog/categories", icon: Box },
-  { title: "Brands", path: "/customers/catalog/brands", icon: Tags },
-  { title: "Units", path: "/customers/catalog/units", icon: Scale },
-  { title: "Packaging", path: "/customers/catalog/packaging", icon: Box },
 ];
 
 const orderItems = [

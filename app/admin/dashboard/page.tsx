@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, ShoppingCart, Package, AlertTriangle, ShieldCheck, DollarSign, Loader2, Inbox, Activity, Target, Layers, ArrowUpRight, Zap } from "lucide-react";
+import { Users, ShoppingCart, Package, AlertTriangle, ShieldCheck, DollarSign, Loader2, Inbox, Activity, Target, Layers, ArrowUpRight, Zap, CheckCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -61,10 +61,10 @@ export default function AdminDashboardPage() {
       bg: "",
     },
     {
-      label: "Pending Approvals",
-      value: kpis?.pendingApprovals ?? 0,
-      icon: ShieldCheck,
-      color: kpis?.pendingApprovals ? "text-yellow-600" : "text-gray-900",
+      label: "Successful Orders",
+      value: kpis?.successfulOrdersCount ?? 0,
+      icon: CheckCircle,
+      color: kpis?.successfulOrdersCount ? "text-green-600" : "text-gray-900",
       bg: "",
     },
     {
@@ -150,23 +150,21 @@ export default function AdminDashboardPage() {
           </div>
           <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-black text-green-100/70 uppercase tracking-widest leading-none">Strategic Growth</p>
-              <Zap className={`w-3 h-3 ${
-                kpis?.strategicGrowthStatus === 'Accelerated' ? 'text-green-400' :
-                kpis?.strategicGrowthStatus === 'Steady' ? 'text-blue-400' :
-                kpis?.strategicGrowthStatus === 'Moderate' ? 'text-yellow-400' : 'text-gray-400'
-              }`} />
+              <p className="text-[10px] font-black text-green-100/70 uppercase tracking-widest leading-none">Total Earnings</p>
+              <DollarSign className="w-3 h-3 text-green-400" />
             </div>
             <p className="text-xl font-black tracking-tight text-white">
-              {kpis?.strategicGrowthStatus ?? 'No Data'}
+              ₱{(kpis?.totalEarnings ?? 0) >= 1000000 
+                ? ((kpis?.totalEarnings ?? 0) / 1000000).toFixed(1) + 'M'
+                : (kpis?.totalEarnings ?? 0) >= 1000 
+                ? ((kpis?.totalEarnings ?? 0) / 1000).toFixed(1) + 'K'
+                : (kpis?.totalEarnings ?? 0).toLocaleString('en-PH')
+              }
             </p>
             <div className="w-full h-1 bg-white/10 rounded-full mt-3 overflow-hidden">
               <div 
-                className={`h-full rounded-full transition-all ${
-                  kpis?.strategicGrowthStatus === 'Accelerated' ? 'bg-green-400 w-[85%]' :
-                  kpis?.strategicGrowthStatus === 'Steady' ? 'bg-blue-400 w-[65%]' :
-                  kpis?.strategicGrowthStatus === 'Moderate' ? 'bg-yellow-400 w-[35%]' : 'bg-gray-400 w-[10%]'
-                }`}
+                className="h-full rounded-full transition-all bg-green-400" 
+                style={{ width: `${Math.min(100, Math.max(2, ((kpis?.totalEarnings ?? 0) / 10000000) * 100))}%` }}
               />
             </div>
           </div>
@@ -174,7 +172,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {kpiCards.map((card) => (
           <Card key={card.label} className={`shadow-sm border-0 rounded-xl relative overflow-hidden ${card.bg}`}>
             <CardHeader className="p-4 pb-2">

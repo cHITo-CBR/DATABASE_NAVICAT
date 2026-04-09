@@ -1,310 +1,107 @@
-# FlowStock Inventory System 🚀
+# CPF Supply Chain & Inventory System
 
-**A modern, role‑based inventory and booking management system built with Next.js (custom version) and MySQL.**
-
----
-
-## 📚 Overview
-
-This application provides a full‑stack solution for managing products, categories, brands, units, packaging, customers, sales transactions, and quota systems. Access is controlled by three primary roles:
-
-- **Admin** – Full control over the system configuration, data management, and user administration.
-- **Salesman** – Handles daily sales activities, creates bookings, records store visits, and manages their own customers.
-- **Supervisor** – Oversees sales performance, reviews reports, and manages quotas across the organization.
-
-All data is stored in a MySQL database (no Supabase dependencies) and accessed via a set of reusable server‑side helpers in `lib/db‑helpers.ts`.
+This document outlines the core architecture, functionality, and role-based logic of the Inventory & Sales application built with Next.js and TiDB (MySQL Compatible).
 
 ---
 
-## 🛠️ Features by Role
+## 🏗 System Architecture 
 
-### 👑 Admin
-- **User Management** – Create, edit, activate/deactivate users and assign roles (`admin`, `supervisor`, `salesman`, `buyer`).
-- **Catalog Management** – Full CRUD for product categories, brands, units, packaging types, and products.
-- **Quota System** – Define quota targets, view quota reports, and adjust quota parameters.
-- **System Settings** – Configure Cloudinary integration, JWT secret, and MySQL connection via `.env.local`.
-- **Audit Logs** – Automatic logging of critical actions for compliance.
-- **Reports & Dashboards** – Access global sales, inventory, and performance dashboards.
+This system uses a **Role-Based Access Control (RBAC)** architecture to route users to isolated sub-applications upon logging in. Each permission level provides targeted functionality specific to the user's operational needs.
 
-### 💼 Salesman
-- **Customer Management** – View and add customers assigned to them.
-- **Store Visits** – Record visit dates, check‑in/out times, and notes.
-- **Bookings** – Create and update bookings for customers, view booking status.
-- **Sales Transactions** – Record sales, view transaction history, and generate invoices.
-- **Quota Tracking** – See personal quota progress on the dashboard.
-
-### 📊 Supervisor
-- **Team Overview** – Monitor salesmen performance, quota attainment, and store visit metrics.
-- **Reports** – Generate periodical reports on sales, inventory movements, and quota compliance.
-- **Quota Management** – Adjust quota targets for teams and individual salesmen.
-- **Analytics** – Access AI‑powered insights (via the `ai‑insights` action) for strategic decisions.
+The hierarchical flow of data generally moves from **Buyers** (Placing Orders/Bookings) &rarr; **Salesmen** (Managing Customer Accounts) &rarr; **Supervisors** (Team Oversight & Reporting) &rarr; **Admins** (Full System/Enterprise Control).
 
 ---
 
-## 🚀 Getting Started
+## 👥 Role Logic & Functionalities
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd inventory
-   ```
-2. **Install dependencies**
-   ```bash
-   npm install   # or yarn, pnpm, bun
-   ```
-3. **Configure environment** – Copy `.env.example` to `.env.local` and fill in your MySQL credentials and Cloudinary keys.
-4. **Run database migrations** (if not already set up)
-   ```bash
-   mysql -u root < mysql-schema.sql
-   # optional: apply migration-fix-catalog.sql for any missing columns
-   ```
-5. **Start the development server**
-   ```bash
-   npm run dev
-   ```
-6. Open **http://localhost:3000** in your browser. Log in with an admin account (see `admin.json` for sample users) and explore the role‑specific sections.
+### 1. 🛡️ Administrator (Admin)
+**Role:** Supreme control over the entire ecosystem. Admins are generally IT personnel or high-level operations managers.
+
+**Key Functionalities:**
+- **Enterprise Dashboard:** High-level strategic overview including Total Earnings, Successful Orders, Pipeline Growth, and Live Hub Status.
+- **User & Approval Management:** Approving new account registrations to ensure only authorized personnel and clients gain entry. Full control over user role assignment (`/admin/users`, `/admin/approvals`).
+- **Inventory & Catalog Master Control:** Full CRUD capabilities for adding new SKUs, modifying existing product packages/pricing, restocking, and archiving (`/admin/inventory`, `/admin/catalog`).
+- **Sales & Bookings Management:** View all incoming transactions/bookings, alter their statuses (e.g., to "Completed"), and track the entire sales pipeline (`/admin/sales`, `/admin/bookings`).
+- **Audit Logging:** Access to system-wide audit logs to track changes, ensuring accountability and security (`/admin/audit`).
+- **Team & Operational Configs:** Setting quotas, scheduling, and adjusting global settings.
 
 ---
 
-## 🗂️ Project Structure
+### 2. 👔 Supervisor
+**Role:** Mid-level management. Supervisors oversee regional or team-based sales and inventory flow.
 
-```
-├── app/                                # Next.js App Router
-│   ├── layout.tsx                      # Root layout
-│   ├── page.tsx                        # Landing / redirect page
-│   ├── globals.css                     # Global styles
-│   ├── favicon.ico
-│   │
-│   ├── login/                          # Login page
-│   │   └── page.tsx
-│   ├── signup/                         # Signup / registration page
-│   │   └── page.tsx
-│   ├── auth/
-│   │   └── callback/                   # OAuth callback handler
-│   │       └── page.tsx
-│   │
-│   ├── (dashboard)/                    # Route group – buyer / public dashboard
-│   │   ├── layout.tsx
-│   │   ├── overview/                   # Dashboard overview
-│   │   ├── products/                   # Product browsing
-│   │   └── customers/                  # Customer‑facing views
-│   │
-│   ├── admin/                          # ── Admin role pages ──
-│   │   ├── layout.tsx
-│   │   ├── dashboard/                  # Admin dashboard
-│   │   ├── catalog/                    # Catalog management
-│   │   │   ├── categories/
-│   │   │   ├── brands/
-│   │   │   ├── units/
-│   │   │   ├── packaging/
-│   │   │   └── products/
-│   │   ├── inventory/                  # Inventory ledger & movements
-│   │   ├── users/                      # User management
-│   │   ├── approvals/                  # Account approval workflow
-│   │   ├── customers/                  # Customer management
-│   │   ├── sales/                      # Sales transactions
-│   │   ├── bookings/                   # Booking management
-│   │   ├── buyer-requests/             # Buyer request processing
-│   │   ├── callsheets/                 # Callsheet management
-│   │   ├── visits/                     # Store visit logs
-│   │   ├── quotas/                     # Quota system
-│   │   ├── reports/                    # Reports & analytics
-│   │   ├── audit/                      # Audit log viewer
-│   │   ├── archives/                   # Archived items
-│   │   ├── notifications/              # Notifications
-│   │   └── settings/                   # System settings
-│   │
-│   ├── salesman/                       # ── Salesman role pages ──
-│   │   ├── layout.tsx
-│   │   ├── dashboard/                  # Salesman dashboard & quota progress
-│   │   ├── customers/                  # Assigned customers
-│   │   ├── bookings/                   # Own bookings
-│   │   ├── callsheets/                 # Callsheet creation
-│   │   ├── requests/                   # Buyer request handling
-│   │   ├── visits/                     # Store visit recording
-│   │   └── notifications/              # Notifications
-│   │
-│   ├── supervisor/                     # ── Supervisor role pages ──
-│   │   ├── layout.tsx
-│   │   ├── dashboard/                  # Supervisor overview
-│   │   ├── catalog/                    # Catalog view
-│   │   │   ├── categories/
-│   │   │   ├── brands/
-│   │   │   ├── units/
-│   │   │   ├── packaging/
-│   │   │   └── products/
-│   │   ├── inventory/                  # Inventory overview
-│   │   ├── customers/                  # Customer oversight
-│   │   ├── sales/                      # Sales reports
-│   │   ├── bookings/                   # Booking review
-│   │   ├── buyer-requests/             # Buyer request review
-│   │   ├── callsheets/                 # Callsheet review
-│   │   ├── visits/                     # Visit monitoring
-│   │   ├── reports/                    # Analytics & reports
-│   │   ├── team/                       # Team / salesman management
-│   │   ├── profile/                    # User profile
-│   │   ├── notifications/              # Notifications
-│   │   └── settings/                   # Personal settings
-│   │
-│   ├── customers/                      # ── Customer / Buyer role pages ──
-│   │   ├── layout.tsx
-│   │   ├── dashboard/                  # Customer dashboard
-│   │   ├── catalog/                    # Browse catalog
-│   │   ├── bookings/                   # Own bookings
-│   │   ├── buyer-requests/             # Submit requests
-│   │   ├── profile/                    # Profile management
-│   │   ├── notifications/              # Notifications
-│   │   └── settings/                   # Account settings
-│   │
-│   ├── actions/                        # ── Server Actions (data layer) ──
-│   │   ├── auth.ts                     # Login, signup, session
-│   │   ├── admin.ts                    # Admin‑specific helpers
-│   │   ├── catalog.ts                  # Categories, brands, units, packaging CRUD
-│   │   ├── products.ts                 # Product CRUD & variants
-│   │   ├── inventory.ts                # Inventory ledger movements
-│   │   ├── customers.ts                # Customer CRUD
-│   │   ├── sales.ts                    # Sales transaction management
-│   │   ├── bookings.ts                 # Booking operations
-│   │   ├── buyer-requests.ts           # Buyer request processing
-│   │   ├── buyer-actions.ts            # Buyer‑specific actions
-│   │   ├── callsheets.ts              # Callsheet creation & approval
-│   │   ├── visits.ts                   # Store visit recording
-│   │   ├── store-visits.ts             # Additional visit helpers
-│   │   ├── quotas.ts                   # Quota targets & tracking
-│   │   ├── dashboard.ts                # Admin dashboard stats
-│   │   ├── salesman-dashboard.ts       # Salesman dashboard stats
-│   │   ├── mobile-dashboard.ts         # Mobile dashboard data
-│   │   ├── supervisor-actions.ts       # Supervisor‑specific logic
-│   │   ├── reports.ts                  # Report generation
-│   │   ├── notifications.ts            # Notification CRUD
-│   │   ├── users.ts                    # User management
-│   │   ├── audit.ts                    # Audit log recording
-│   │   ├── search.ts                   # Global search
-│   │   ├── settings.ts                 # System settings
-│   │   ├── sidebar.ts                  # Dynamic sidebar config
-│   │   ├── cloudinary.ts               # Image upload helpers
-│   │   └── ai-insights.ts              # AI‑powered analytics
-│   │
-│   └── api/                            # ── API Routes ──
-│       ├── auth/                       # Auth endpoints
-│       ├── logout/                     # Logout endpoint
-│       ├── test_login/                 # Dev test login
-│       └── upload-image.ts             # Image upload handler
-│
-├── components/                         # ── Shared UI Components ──
-│   ├── layout/
-│   │   ├── app-sidebar.tsx             # Main sidebar navigation
-│   │   ├── customer-sidebar.tsx        # Customer‑specific sidebar
-│   │   └── top-nav.tsx                 # Top navigation bar
-│   ├── ui/                             # shadcn/ui component library
-│   │   ├── button.tsx, card.tsx, dialog.tsx, table.tsx, tabs.tsx,
-│   │   │   select.tsx, input.tsx, badge.tsx, chart.tsx, sidebar.tsx,
-│   │   │   combobox.tsx, calendar.tsx, dropdown-menu.tsx, sheet.tsx,
-│   │   │   alert-dialog.tsx, accordion.tsx, popover.tsx, tooltip.tsx,
-│   │   │   and 37 more …
-│   ├── notifications/                  # Notification components
-│   ├── dashboard-cards.tsx             # Dashboard stat cards
-│   ├── dashboard-header.tsx            # Dashboard header bar
-│   ├── mobile-bottom-nav.tsx           # Mobile bottom navigation
-│   └── theme-provider.tsx              # Dark/light theme provider
-│
-├── hooks/                              # ── Custom React Hooks ──
-│   └── use-mobile.ts                   # Mobile breakpoint detection
-│
-├── lib/                                # ── Core Utilities ──
-│   ├── db.ts                           # MySQL connection pool (mysql2)
-│   ├── db-helpers.ts                   # query / insert / update / remove wrappers
-│   ├── session.ts                      # JWT session management
-│   ├── cloudinary.ts                   # Cloudinary SDK config
-│   └── utils.ts                        # Misc utilities (cn, etc.)
-│
-├── public/                             # ── Static Assets ──
-│   ├── logo.png
-│   ├── buyer-hero.png
-│   ├── seller-hero.png
-│   ├── supervisor-hero.png
-│   └── upload/                         # Local upload directory
-│
-├── proxy.ts                            # Role‑based middleware / access control
-├── mysql-schema.sql                    # Full database schema
-├── migration-fix-catalog.sql           # Migration fixes for catalog tables
-├── .env.local                          # Environment variables (MySQL, JWT, Cloudinary)
-├── .env.example                        # Template for .env.local
-├── package.json                        # Dependencies & scripts
-├── tsconfig.json                       # TypeScript configuration
-├── eslint.config.mjs                   # ESLint configuration
-├── postcss.config.mjs                  # PostCSS configuration
-├── next.config.ts                      # Next.js configuration
-└── README.md                           # ← You are here
-```
+**Key Functionalities:**
+- **Team Management:** Ability to track and review the performance of Salesmen under their branch (`/supervisor/team`).
+- **Sales & Reporting:** Deep dive into recent sales performance, quota tracking, and compiling status reports for upper management (`/supervisor/reports`, `/supervisor/sales`).
+- **Inventory Oversight:** Able to monitor live stock tracking (balance counts, low stock alerts) to proactively prevent shortages (`/supervisor/inventory`).
+- **Route / Visit Oversight:** Track salesmen's customer visits and logistical routes (`/supervisor/visits`).
 
 ---
 
-## 🧭 Routing & Grouping Strategy
+### 3. 💼 Salesman
+**Role:** Field operatives. Focused strictly on customer relationship management (CRM) and fulfilling/capturing incoming sales.
 
-This project leverages Next.js **Route Groups** and role-based directory segments to maintain a clean, scalable architecture.
-
-### 📁 How We Organize Routes
-1. **Persona-Based Segments**: Folders like `admin/`, `salesman/`, and `supervisor/` create explicit URL prefixes (e.g., `yourdomain.com/admin/settings`). This ensures clear segregation of features and simplifies analytics/logging.
-2. **Route Groups `(folder-name)`**: We use folders wrapped in parentheses, such as `app/(dashboard)/`, to:
-   - **Shared Layouts**: Apply a common sidebar or navigation bar to multiple pages without affecting the URL path.
-   - **Logical Organization**: Keep related pages together in the filesystem for developer sanity.
-3. **Internal Organization**: Within each persona folder, routes are further categorized (e.g., `admin/catalog/products`) to keep the hierarchy intuitive.
-
-### 🛡️ Benefits of this Structure
-- **Scoped Layouts**: Each role has a dedicated `layout.tsx` at its root, preventing "layout leakage" where an admin sidebar might mistakenly show on a salesman page.
-- **Middleware Integration**: Our `proxy.ts` can easily identify the user's intended destination by checking the URL segment and comparing it with their JWT role.
-- **Scalability**: Adding a new role or a major feature set is as simple as creating a new folder with its own internal routing and layout.
+**Key Functionalities:**
+- **Customer Management:** Maintain specific client accounts, ensuring store partners are satisfied (`/salesman/customers`).
+- **Bookings & Requests:** Input and handle physical or direct-to-salesman bookings, adjusting fulfillment statuses (`/salesman/bookings`, `/salesman/requests`).
+- **Visit Scheduling:** Managing their daily/weekly route planning to interact physically with store owners and buyers (`/salesman/visits`).
+- **Notifications:** Receive alerts when customers file complaints, request goods, or need approval.
 
 ---
 
-## 📦 Database Schema Highlights
+### 4. 🛒 Buyer (Customer)
+**Role:** External store owners or bulk purchasers who consume the application as a B2B platform.
 
-- `users` – Stores user credentials and role references.
-- `roles` – Defines `admin`, `supervisor`, `salesman`, `buyer`.
-- `product_categories`, `brands`, `units`, `packaging_types` – Catalog entities with `is_archived` flags.
-- `products` – Core product table, linked to category, brand, and optional packaging.
-- `customers` – Stores client information and assigned salesman.
-- `sales_transactions` – Records each sale with amount and status.
-- `store_visits` – Logs salesman visits to customer locations.
-- `quotas` – Tracks quota targets and achievements per salesman.
-- `notifications` – Simple notification system for users.
+**Key Functionalities:**
+- **Product Catalog Browsing:** View available inventory SKUs, dynamic pricing, and stock availability statuses (`/customers/catalog`).
+- **Order Booking:** Seamlessly submit booking requests or direct orders to the supply chain (`/customers/bookings`, `/customers/buyer-requests`).
+- **Profile Management:** Manage their store's shipping details, contact information, and business credentials (`/customers/profile`).
+- **Personalized Dashboard:** View past transaction history, pending order statuses, and receive notifications on their fulfillment (`/customers/dashboard`).
 
 ---
 
-## 🧭 Navigation & Role‑Based Layouts
-
-The app uses **route groups** to isolate each role’s UI:
-- `/admin/*` – Admin dashboard and management pages.
-- `/salesman/*` – Salesman daily workflow.
-- `/supervisor/*` – Supervisor overview and reports.
-
-Middleware (`proxy.ts`) checks the JWT token, determines the user’s role, and redirects to the appropriate group, ensuring secure access.
+## 🔒 Security & Data Flow
+- **TiDB Cloud Security:** The system leverages a distributed MySQL-compatible database (TiDB) with SSL encryption for secure data handling.
+- **Middleware Auth:** Next.js middleware and JWT/Session strategies route users to their respective dashboards based on roles stored in the database.
+- **Real-Time Data Integration:** All Dashboards calculate dynamic views like Pipeline Growth and Operational Health based on live transaction data.
 
 ---
 
-## 🛡️ Security
+## 🚀 Deployment Guide (Vercel + TiDB Cloud)
 
-- **JWT authentication** – Tokens are signed with `JWT_SECRET` from `.env.local`.
-- **Server‑side actions** – All data mutations run on the server, preventing client‑side tampering.
-- **Role‑based access control** – Middleware validates role before serving pages.
-- **Environment isolation** – No hard‑coded secrets; everything lives in `.env.local`.
+Follow these steps to deploy the application to Vercel using TiDB Cloud as your database.
 
----
+### 1. 🗄️ TiDB Cloud Setup
+1.  **Sign Up:** Create an account at [PingCAP TiDB Cloud](https://tidbcloud.com/).
+2.  **Create Cluster:** Choose **TiDB Serverless** (Free Tier).
+3.  **Get Connection Details:** 
+    *   Go to your cluster dashboard.
+    *   Click **Connect**.
+    *   Choose **Connect with MySQL CLI** or **Node.js** to see your credentials.
+    *   **Note your:** Host, Port (usually 4000), User, Password, and Database name.
 
-## 🤝 Contributing
+### 2. 🏗️ Database Initialization
+1.  In the TiDB Cloud console, go to **SQL Editor**.
+2.  Open the `mysql-schema.sql` file from this project.
+3.  Copy and paste the entire script into the SQL Editor and click **Run**.
+4.  (Optional) Run `admin-seeder.sql` to create your initial global administrator.
 
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/awesome-feature`).
-3. Follow the existing code style (TypeScript, ESLint config).
-4. Submit a Pull Request with a clear description of changes.
+### 3. 🌐 Vercel Deployment
+1.  **Push Code:** Ensure your latest code is pushed to a GitHub/GitLab repository.
+2.  **Import to Vercel:** Go to [Vercel](https://vercel.com/) and click **Add New > Project**.
+3.  **Environment Variables:** During the configuration step, add the following variables:
+    *   `DB_HOST`: Your TiDB Host (e.g., `gateway01.ap-southeast-1.prod.aws.tidbcloud.com`)
+    *   `DB_PORT`: `4000`
+    *   `DB_USER`: Your TiDB User
+    *   `DB_PASSWORD`: Your TiDB Password
+    *   `DB_NAME`: Your Database Name (e.g., `inventory`)
+    *   `DB_SSL`: `true` (This is mandatory for TiDB Cloud)
+    *   `JWT_SECRET`: A long random string for auth security.
+    *   `CLOUDINARY_CLOUD_NAME`: (If using image uploads)
+    *   `CLOUDINARY_API_KEY`: (If using image uploads)
+    *   `CLOUDINARY_API_SECRET`: (If using image uploads)
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-*Happy coding!*
+### 4. ✅ Verification
+1.  Once deployed, navigate to your Vercel URL.
+2.  The application should now be connected to your live TiDB cluster.
+3.  Test your login flow with the credentials created in the seeder step.

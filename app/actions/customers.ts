@@ -96,13 +96,10 @@ export async function createCustomer(formData: FormData) {
   if (!storeName) return { error: "Store name is required." };
 
   try {
-    const customerId = generateUUID();
-
     await insert(
-      `INSERT INTO customers (id, store_name, contact_person, phone, email, address, city, region, assigned_salesman_id, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      `INSERT INTO customers (store_name, contact_person, phone, email, address, city, region, assigned_salesman_id, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
-        customerId,
         storeName,
         contactPerson || null,
         phone || null,
@@ -130,6 +127,18 @@ export async function getSalesmenForAssignment(): Promise<{ id: string; full_nam
     );
   } catch (error) {
     console.error("Error fetching salesmen:", error);
+    return [];
+  }
+}
+
+export async function getRegisteredBuyers(): Promise<{ id: string; full_name: string; email: string }[]> {
+  try {
+    return await query<RowDataPacket & { id: string; full_name: string; email: string }>(
+      "SELECT id, full_name, email FROM users WHERE role_id = 4 AND is_active = ? ORDER BY full_name",
+      [fromBoolean(true)]
+    );
+  } catch (error) {
+    console.error("Error fetching buyers:", error);
     return [];
   }
 }
