@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Search, Loader2, Heart } from "lucide-react";
 import Link from "next/link";
-import { getBuyerProducts, getProductFilters } from "@/app/actions/buyer-actions";
+import { getBuyerProducts, getProductFilters, toggleFavorite, getUserFavorites } from "@/app/actions/buyer-actions";
+import { getCurrentUser } from "@/app/actions/auth";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 
@@ -13,8 +14,17 @@ export default function MobileShopProductsPage() {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userFavorites, setUserFavorites] = useState<string[]>([]);
 
   useEffect(() => {
+    getCurrentUser().then(session => {
+      if (session?.user?.id) {
+        setUserId(session.user.id);
+        getUserFavorites(session.user.id).then(setUserFavorites);
+      }
+    });
+
     Promise.all([getBuyerProducts(), getProductFilters()]).then(([prods, fils]) => {
       setProducts(prods); 
       setFilters(fils); 
@@ -25,6 +35,21 @@ export default function MobileShopProductsPage() {
   useEffect(() => {
     getBuyerProducts(search || undefined, categoryId, undefined).then(setProducts);
   }, [search, categoryId]);
+
+  const handleToggleFavorite = async (e: React.MouseEvent, productId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!userId) return;
+
+    const res = await toggleFavorite(userId, productId);
+    if (res.success) {
+      setUserFavorites(prev => 
+        res.isFavorite 
+          ? [...prev, productId] 
+          : prev.filter(id => id !== productId)
+      );
+    }
+  };
 
   return (
     <div className="pb-8 pt-2">
@@ -103,6 +128,9 @@ export default function MobileShopProductsPage() {
         <div className="grid grid-cols-2 gap-x-4 gap-y-8">
           {products.map((p) => {
             const imgUrl = p.product_images?.find((img: any) => img.is_primary)?.image_url || p.product_images?.[0]?.image_url;
+            const isFav = userFavorites.includes(p.id);
+            const variant = p.product_variants?.[0];
+            
             return (
               <div key={p.id} className="flex flex-col group">
                 <div className="relative w-full aspect-[4/5] rounded-[28px] overflow-hidden mb-3 bg-[#1A1D20]">
@@ -115,29 +143,57 @@ export default function MobileShopProductsPage() {
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-8 h-8 rounded-full bg-yellow-400/20 flex items-center justify-center text-yellow-500 font-bold text-xs">
+                      <div className="w-8 h-8 rounded-full bg-yellow-400/20 flex items-center justify-center text-yellow-500 font-bold text-xs shadow-inner">
                         {p.name.substring(0, 1)}
                       </div>
                     </div>
                   )}
-                  <button className="absolute top-3 right-3 w-8 h-8 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors">
-                    <Heart className="w-4 h-4" />
+                  <button 
+                    onClick={(e) => handleToggleFavorite(e, p.id)}
+                    className={cn(
+                      "absolute top-3 right-3 w-8 h-8 backdrop-blur-md rounded-full flex items-center justify-center transition-all active:scale-90",
+                      isFav ? "bg-red-500 text-white" : "bg-white/10 text-white hover:text-white"
+                    )}
+                  >
+                    <Heart className={cn("w-4 h-4", isFav && "fill-current")} />
                   </button>
+
+                  {/* Badges for Packaging/Net Weight */}
+                  <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-1">
+                    {variant?.packaging_type && (
+                      <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md text-white text-[9px] font-bold rounded-full uppercase tracking-wider">
+                        {variant.packaging_type}
+                      </span>
+                    )}
+                    {p.total_packaging && (
+                      <span className="px-2 py-0.5 bg-white/20 backdrop-blur-md text-white text-[9px] font-bold rounded-full uppercase tracking-wider">
+                        {p.total_packaging} Cases
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
-                <h3 className="font-bold text-[14px] leading-tight text-gray-900 mb-1 line-clamp-2">
-                  {p.name}
-                </h3>
-                
-                {p.product_variants?.[0]?.unit_price && (
-                  <p className="text-[14px] font-bold text-[#556987] mb-3">
-                    ${Number(p.product_variants[0].unit_price).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </p>
-                )}
+                <div className="px-1">
+                  <h3 className="font-bold text-[14px] leading-tight text-gray-900 mb-0.5 line-clamp-1">
+                    {p.name}
+                  </h3>
+                  
+                  {p.net_weight && (
+                    <p className="text-[10px] text-gray-400 font-medium mb-1 uppercase tracking-tight">
+                      {p.net_weight}
+                    </p>
+                  )}
+                  
+                  {variant?.unit_price && (
+                    <p className="text-[14px] font-bold text-[#4B5E65] mb-3">
+                      ₱{Number(variant.unit_price).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </p>
+                  )}
+                </div>
                 
                 <Link 
                   href={`/customers/catalog/products/${p.id}`}
-                  className="mt-auto w-full py-2.5 bg-[#E6EAF0] hover:bg-[#D9DEE6] text-[#4B5E65] text-[13px] font-bold rounded-full text-center transition-colors"
+                  className="mt-auto w-full py-3 bg-[#EEF0F2] hover:bg-[#E2E5E9] text-[#4B5E65] text-[13px] font-bold rounded-[18px] text-center transition-all active:scale-[0.98]"
                 >
                   Book Now
                 </Link>
@@ -149,3 +205,4 @@ export default function MobileShopProductsPage() {
     </div>
   );
 }
+

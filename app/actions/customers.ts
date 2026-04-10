@@ -96,10 +96,13 @@ export async function createCustomer(formData: FormData) {
   if (!storeName) return { error: "Store name is required." };
 
   try {
+    const customerId = generateUUID();
+
     await insert(
-      `INSERT INTO customers (store_name, contact_person, phone, email, address, city, region, assigned_salesman_id, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      `INSERT INTO customers (id, store_name, contact_person, phone, email, address, city, region, assigned_salesman_id, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
+        customerId,
         storeName,
         contactPerson || null,
         phone || null,

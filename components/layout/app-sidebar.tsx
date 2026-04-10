@@ -70,8 +70,7 @@ const operationsItems = [
 ];
 
 const fieldSalesItems = [
-  { title: "Buyer Requests", path: "/buyer-requests", icon: Package2, countKey: "buyerRequests" as const },
-  { title: "Bookings", path: "/bookings", icon: ShoppingBag, countKey: "bookings" as const },
+  { title: "Order Management", path: "/orders", icon: ShoppingBag, countKey: "orders" as const },
 ];
 
 const analyticsItems = [
@@ -149,60 +148,45 @@ export function AppSidebar({ basePath = "/admin" }: AppSidebarProps) {
 
     if (filteredItems.length === 0) return null;
 
-    const isOpen = activeSection === section.title;
-
     return (
       <SidebarGroup key={section.title} className="mb-0">
-        <button
-          onClick={() => setActiveSection(isOpen ? "" : section.title)}
-          className="flex items-center justify-between w-full text-left bg-transparent py-2.5 px-1 hover:opacity-80 transition-opacity focus:outline-none"
-        >
-          <span className="text-[#005914] font-semibold text-xs tracking-wider uppercase">
+        <div className="flex items-center justify-between w-full text-left bg-transparent py-2 px-1">
+          <span className="text-[#005914] font-semibold text-[11px] tracking-wider uppercase opacity-70">
             {section.title}
           </span>
-          <ChevronDown 
-            className={cn("w-4 h-4 text-[#005914] transition-transform duration-200", { "rotate-180": isOpen })}
-          />
-        </button>
+        </div>
 
-        <div
-          className={cn(
-            "grid transition-all duration-300 ease-in-out overflow-hidden",
-            isOpen ? "grid-rows-[1fr] opacity-100 mt-1" : "grid-rows-[0fr] opacity-0 mt-0"
-          )}
-        >
-          <div className="min-h-0">
-            <SidebarMenu>
-              {filteredItems.map((item) => {
-                const url = prefixed(item.path);
-                const isActive = pathname === url || pathname.startsWith(url + "/");
-                const countKey = (item as any).countKey as keyof SidebarCounts | undefined;
-                const count = countKey && counts ? counts[countKey] : null;
-                
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className="font-medium text-gray-700 select-none outline-none data-[active=true]:bg-[#E2EBE5] data-[active=true]:text-[#005914] data-[active=true]:font-bold hover:bg-gray-50 h-9"
-                    >
-                      <Link href={url} className="flex items-center justify-between w-full">
-                        <span className="flex items-center">
-                          <item.icon className="w-4 h-4 mr-2" />
-                          <span className="text-sm">{item.title}</span>
-                        </span>
-                        {count !== null && count > 0 && (
-                          <Badge variant="secondary" className="ml-auto bg-[#005914]/10 text-[#005914] text-[10px] px-1.5 py-0 h-4 min-w-[16px] flex items-center justify-center rounded-full">
-                            {count}
-                          </Badge>
-                        )}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </div>
+        <div className="mt-1">
+          <SidebarMenu>
+            {filteredItems.map((item) => {
+              const url = prefixed(item.path);
+              const isActive = pathname === url || pathname.startsWith(url + "/");
+              const countKey = (item as any).countKey as keyof SidebarCounts | undefined;
+              const count = countKey && counts ? counts[countKey] : null;
+              
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive}
+                    className="font-medium text-gray-700 select-none outline-none data-[active=true]:bg-[#E2EBE5] data-[active=true]:text-[#005914] data-[active=true]:font-bold hover:bg-gray-50 h-9"
+                  >
+                    <Link href={url} className="flex items-center justify-between w-full">
+                      <span className="flex items-center">
+                        <item.icon className="w-4 h-4 mr-2" />
+                        <span className="text-sm">{item.title}</span>
+                      </span>
+                      {count !== null && count > 0 && (
+                        <Badge variant="secondary" className="ml-auto bg-[#005914]/10 text-[#005914] text-[10px] px-1.5 py-0 h-4 min-w-[16px] flex items-center justify-center rounded-full">
+                          {count}
+                        </Badge>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
         </div>
       </SidebarGroup>
     );

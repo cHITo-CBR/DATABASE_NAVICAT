@@ -82,7 +82,7 @@ export default function MobileUserProfilePage() {
             <span className="text-[10px] items-center text-gray-400 font-bold tracking-wider uppercase">Bookings</span>
           </div>
           <div className="flex-1 bg-[#F8F9FB] rounded-[20px] p-4 flex flex-col items-center justify-center text-center transition-transform active:scale-95">
-            <span className="text-[20px] font-bold text-[#4B5E65] leading-none mb-1">4</span>
+            <span className="text-[20px] font-bold text-[#4B5E65] leading-none mb-1">{data?.favoritesCount || 0}</span>
             <span className="text-[10px] text-gray-400 font-bold tracking-wider uppercase">Favorites</span>
           </div>
         </div>
