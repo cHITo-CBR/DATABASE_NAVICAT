@@ -77,6 +77,8 @@ export async function createProduct(formData: FormData) {
   const packagingId = formData.get("packagingId") as string;
   const totalCases = formData.get("totalCases") as string;
   const packagingPrice = formData.get("packagingPrice") as string;
+  const totalPackaging = formData.get("totalPackaging") as string;
+  const netWeight = formData.get("netWeight") as string;
   const imageUrl = formData.get("imageUrl") as string;
   const imageFile = formData.get("imageFile") as string;
   const variantsJSON = formData.get("variants") as string;
@@ -101,6 +103,8 @@ export async function createProduct(formData: FormData) {
       description: description || null,
       image_url: finalImageUrl,
       packaging_id: packagingId ? parseInt(packagingId) : null,
+      total_packaging: totalPackaging || null,
+      net_weight: netWeight || null,
       total_cases: totalCases ? parseInt(totalCases) : 0,
       packaging_price: packagingPrice ? parseFloat(packagingPrice) : 0.00,
       category_id: categoryId ? parseInt(categoryId) : null,
@@ -216,6 +220,8 @@ export async function updateProduct(id: string, formData: FormData) {
   const packagingId = formData.get("packagingId") as string;
   const totalCases = formData.get("totalCases") as string;
   const packagingPrice = formData.get("packagingPrice") as string;
+  const totalPackaging = formData.get("totalPackaging") as string;
+  const netWeight = formData.get("netWeight") as string;
   const imageUrl = formData.get("imageUrl") as string;
   const variantsJSON = formData.get("variants") as string;
 
@@ -229,6 +235,8 @@ export async function updateProduct(id: string, formData: FormData) {
         description: description || null,
         image_url: imageUrl || null,
         packaging_id: packagingId ? parseInt(packagingId) : null,
+        total_packaging: totalPackaging || null,
+        net_weight: netWeight || null,
         total_cases: totalCases ? parseInt(totalCases) : 0,
         packaging_price: packagingPrice ? parseFloat(packagingPrice) : 0.00,
         category_id: categoryId ? parseInt(categoryId) : null,
