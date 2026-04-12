@@ -130,7 +130,9 @@ export default function AdminDashboardPage() {
                 (kpis?.pipelineGrowth ?? 0) > 0 ? 'text-green-400 bg-white/10' : 'text-gray-400 bg-white/5'
               }`}>
                 <ArrowUpRight className="w-2.5 h-2.5" />
-                {kpis?.pipelineGrowth > 0 ? '+' : ''}{kpis?.pipelineGrowth ?? 0}%
+                {typeof kpis?.pipelineGrowth === "number" ?
+                  `${kpis.pipelineGrowth > 0 ? '+' : ''}${kpis.pipelineGrowth}%`
+                  : '0%'}
               </div>
             </div>
             <p className="text-xl font-black tracking-tight text-white">
