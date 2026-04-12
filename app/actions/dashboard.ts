@@ -41,12 +41,12 @@ async function safeCount(table: string, filter?: { column: string; value: any })
   }
 }
 
-export async function getDashboardKPIs(): Promise<DashboardKPIs> {
-  const [totalUsers, totalCustomers, totalProducts] = await Promise.all([
-    safeCount("users"),
-    safeCount("users", { column: "role_id", value: 4 }),
-    safeCount("products"),
-  ]);
+  export async function getDashboardKPIs(): Promise<DashboardKPIs> {
+    const [totalUsers, totalCustomers, totalProducts] = await Promise.all([
+      safeCount("users"),
+      safeCount("customers"),
+      safeCount("products"),
+    ]);
 
   let successfulOrdersCount = 0;
   try {

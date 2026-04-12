@@ -75,7 +75,7 @@ export default function AuditLogsPage() {
                     <TableCell className="text-gray-500 text-xs">
                       {new Date(log.created_at).toLocaleString()}
                     </TableCell>
-                    <TableCell className="font-medium">{log.users?.full_name ?? "System"}</TableCell>
+                    <TableCell className="font-medium">{log.user_name ?? "System"}</TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${getActionColor(log.action)}`}>
                         {log.action}
