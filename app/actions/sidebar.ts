@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { queryOne } from "@/lib/db-helpers";
 
 export interface SidebarCounts {
   customers: number;
@@ -18,12 +18,12 @@ export interface SidebarCounts {
 export async function getSidebarCounts(): Promise<SidebarCounts> {
   try {
     const [customers, products, sales, quotas, visits, buyerRequests] = await Promise.all([
-      supabase.from("customers").select("*", { count: "exact", head: true }).eq("is_active", true).then(r => r.count || 0),
-      supabase.from("products").select("*", { count: "exact", head: true }).eq("is_active", true).then(r => r.count || 0),
-      supabase.from("sales_transactions").select("*", { count: "exact", head: true }).then(r => r.count || 0),
-      supabase.from("salesman_quotas").select("*", { count: "exact", head: true }).eq("status", "ongoing").then(r => r.count || 0),
-      supabase.from("store_visits").select("*", { count: "exact", head: true }).then(r => r.count || 0, () => 0),
-      supabase.from("buyer_requests").select("*", { count: "exact", head: true }).eq("status", "pending").then(r => r.count || 0, () => 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM customers WHERE is_active = 1").then(r => r?.count || 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM products WHERE is_active = 1").then(r => r?.count || 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM sales_transactions").then(r => r?.count || 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM salesman_quotas WHERE status = 'ongoing'").then(r => r?.count || 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM store_visits").then(r => r?.count || 0).catch(() => 0),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM buyer_requests WHERE status = 'pending'").then(r => r?.count || 0).catch(() => 0),
     ]);
 
     return {

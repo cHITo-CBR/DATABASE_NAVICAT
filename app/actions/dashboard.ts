@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne } from "@/lib/db-helpers";
 
 export interface DashboardKPIs {
   totalUsers: number;
@@ -30,12 +30,14 @@ export interface LowStockItem {
 
 async function safeCount(table: string, filter?: { column: string; value: any }): Promise<number> {
   try {
-    let query = supabase.from(table).select("*", { count: "exact", head: true });
+    let sql = `SELECT COUNT(*) as count FROM ${table}`;
+    const params: any[] = [];
     if (filter) {
-      query = query.eq(filter.column, filter.value);
+      sql += ` WHERE ${filter.column} = ?`;
+      params.push(filter.value);
     }
-    const { count } = await query;
-    return count ?? 0;
+    const row = await queryOne<{ count: number }>(sql, params);
+    return row?.count ?? 0;
   } catch {
     return 0;
   }
@@ -50,30 +52,24 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
 
   let successfulOrdersCount = 0;
   try {
-    const { count } = await supabase
-      .from("sales_transactions")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "completed");
-    successfulOrdersCount = count ?? 0;
+    const row = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM sales_transactions WHERE status = 'completed'"
+    );
+    successfulOrdersCount = row?.count ?? 0;
   } catch { successfulOrdersCount = 0; }
 
   let lowStockItems = 0;
   try {
-    const { count } = await supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .lt("total_cases", 10)
-      .eq("is_archived", false);
-    lowStockItems = count ?? 0;
+    const row = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM products WHERE total_cases < 10 AND is_archived = 0"
+    );
+    lowStockItems = row?.count ?? 0;
   } catch { lowStockItems = 0; }
 
   let totalPipelineValue = 0;
   try {
-    const { data } = await supabase
-      .from("products")
-      .select("total_cases, packaging_price")
-      .eq("is_archived", false);
-    totalPipelineValue = (data || []).reduce((sum: number, p: any) =>
+    const rows = await query("SELECT total_cases, packaging_price FROM products WHERE is_archived = 0");
+    totalPipelineValue = rows.reduce((sum: number, p: any) =>
       sum + ((p.total_cases || 0) * (Number(p.packaging_price) || 0)), 0);
   } catch { totalPipelineValue = 0; }
 
@@ -89,11 +85,10 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
 
   let totalEarnings = 0;
   try {
-    const { data } = await supabase
-      .from("sales_transactions")
-      .select("total_amount")
-      .eq("status", "completed");
-    totalEarnings = (data || []).reduce((sum: number, t: any) => sum + (Number(t.total_amount) || 0), 0);
+    const row = await queryOne<{ total: number }>(
+      "SELECT COALESCE(SUM(total_amount), 0) as total FROM sales_transactions WHERE status = 'completed'"
+    );
+    totalEarnings = row?.total ?? 0;
   } catch { totalEarnings = 0; }
 
   return {
@@ -113,17 +108,17 @@ export async function getDashboardKPIs(): Promise<DashboardKPIs> {
 
 export async function getRecentTransactions(): Promise<RecentTransaction[]> {
   try {
-    const { data, error } = await supabase
-      .from("sales_transactions")
-      .select("id, total_amount, status, created_at, customers(store_name)")
-      .order("created_at", { ascending: false })
-      .limit(5);
+    const rows = await query(
+      `SELECT st.id, st.total_amount, st.status, st.created_at, c.store_name as customer_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       ORDER BY st.created_at DESC
+       LIMIT 5`
+    );
 
-    if (error) throw error;
-
-    return (data || []).map((t: any) => ({
+    return rows.map((t: any) => ({
       id: t.id,
-      customer_name: t.customers?.store_name ?? "Unknown",
+      customer_name: t.customer_name ?? "Unknown",
       total_amount: t.total_amount ?? 0,
       status: t.status ?? "unknown",
       created_at: t.created_at,
@@ -135,17 +130,17 @@ export async function getRecentTransactions(): Promise<RecentTransaction[]> {
 
 export async function getLowStockItems(): Promise<LowStockItem[]> {
   try {
-    const { data, error } = await supabase
-      .from("inventory_ledger")
-      .select("balance, product_variants(name)")
-      .lt("balance", 10)
-      .order("balance", { ascending: true })
-      .limit(5);
+    const rows = await query(
+      `SELECT il.balance, pv.name as variant_name
+       FROM inventory_ledger il
+       LEFT JOIN product_variants pv ON il.product_variant_id = pv.id
+       WHERE il.balance < 10
+       ORDER BY il.balance ASC
+       LIMIT 5`
+    );
 
-    if (error) throw error;
-
-    return (data || []).map((item: any) => ({
-      variant_name: item.product_variants?.name ?? "Unknown SKU",
+    return rows.map((item: any) => ({
+      variant_name: item.variant_name ?? "Unknown SKU",
       balance: item.balance ?? 0,
     }));
   } catch {

@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 
 export interface AuditLogRow {
   id: string;
@@ -14,17 +14,18 @@ export interface AuditLogRow {
 
 export async function getAuditLogs(): Promise<AuditLogRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("audit_logs")
-      .select("id, action, entity_type, entity_id, ip_address, metadata, created_at, users:user_id(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const rows = await query(
+      `SELECT al.id, al.action, al.entity_type, al.entity_id, al.ip_address, al.metadata, al.created_at,
+              u.full_name as user_name
+       FROM audit_logs al
+       LEFT JOIN users u ON al.user_id = u.id
+       ORDER BY al.created_at DESC
+       LIMIT 50`
+    );
 
-    if (error) throw error;
-
-    return (data || []).map((log: any) => ({
+    return rows.map((log: any) => ({
       ...log,
-      user_name: log.users?.full_name || null,
+      metadata: typeof log.metadata === "string" ? JSON.parse(log.metadata) : log.metadata,
     }));
   } catch (error) {
     console.error("Error fetching audit logs:", error);

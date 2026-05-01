@@ -1,30 +1,26 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import mysql from "mysql2/promise";
 
 /**
  * DATABASE INITIALIZATION
- * This file initializes the Supabase client used throughout the application's backend.
- * It uses a singleton pattern to prevent multiple connections during development hot-reloads.
+ * This file initializes the MySQL connection pool used throughout the application's backend.
+ * It uses a singleton pattern to prevent multiple pools during development hot-reloads.
  */
 
-// Environment variables for connection - these should be in your .env.local file
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+const globalForDb = global as unknown as { pool: mysql.Pool };
 
-// Define a global type to store the supabase instance across development hot-reloads
-const globalForSupabase = global as unknown as { supabase: SupabaseClient<any, "public", any> };
+const pool: mysql.Pool =
+  globalForDb.pool ||
+  mysql.createPool({
+    host: process.env.MYSQL_HOST || "127.0.0.1",
+    port: parseInt(process.env.MYSQL_PORT || "3306"),
+    user: process.env.MYSQL_USER || "root",
+    password: process.env.MYSQL_PASSWORD || "",
+    database: process.env.MYSQL_DATABASE || "flowstock",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  });
 
-/**
- * Initialize or reuse the existing Supabase client.
- * If globalForSupabase.supabase already exists (from a previous reload), use it.
- * Otherwise, create a new client using the URL and Key.
- */
-const supabase: SupabaseClient<any, "public", any> =
-  globalForSupabase.supabase ||
-  createClient(supabaseUrl, supabaseKey);
+if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
 
-// In development mode, save the client to the global object
-if (process.env.NODE_ENV !== "production") globalForSupabase.supabase = supabase;
-
-// Export as the default database client
-export default supabase;
-
+export default pool;

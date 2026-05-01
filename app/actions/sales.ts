@@ -1,8 +1,8 @@
 "use server";
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 import { notifyRole, createNotification } from "@/app/actions/notifications";
+import pool from "@/lib/db";
 
 export interface SalesTransactionRow {
   id: string;
@@ -35,20 +35,23 @@ export interface SaleDetail {
 
 export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("sales_transactions")
-      .select("id, status, total_amount, notes, created_at, customers(store_name), users(full_name)")
-      .order("created_at", { ascending: false });
+    const rows = await query(
+      `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
+              c.store_name as customer_name, u.full_name as salesman_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       LEFT JOIN users u ON st.salesman_id = u.id
+       ORDER BY st.created_at DESC`
+    );
 
-    if (error) throw error;
-    return (data || []).map((row: any) => ({
+    return rows.map((row: any) => ({
       id: row.id,
       status: row.status,
       total_amount: row.total_amount,
       notes: row.notes,
       created_at: row.created_at,
-      customers: row.customers || null,
-      users: row.users || null,
+      customers: row.customer_name ? { store_name: row.customer_name } : null,
+      users: row.salesman_name ? { full_name: row.salesman_name } : null,
     }));
   } catch {
     return [];
@@ -57,31 +60,41 @@ export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
 
 export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
   try {
-    const { data: transaction, error } = await supabase
-      .from("sales_transactions")
-      .select("id, status, total_amount, notes, created_at, customers(store_name), users(full_name)")
-      .eq("id", id)
-      .maybeSingle();
+    const transaction = await queryOne(
+      `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
+              c.store_name as customer_name, u.full_name as salesman_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       LEFT JOIN users u ON st.salesman_id = u.id
+       WHERE st.id = ?`,
+      [id]
+    );
 
-    if (error) throw error;
     if (!transaction) return null;
 
-    const { data: items } = await supabase
-      .from("sales_transaction_items")
-      .select("id, quantity, unit_price, subtotal, product_variants(name, sku)")
-      .eq("transaction_id", id);
+    const items = await query(
+      `SELECT sti.id, sti.quantity, sti.unit_price, sti.total_price as subtotal,
+              p.name as variant_name, p.id as variant_sku
+       FROM transaction_items sti
+       LEFT JOIN products p ON sti.product_id = p.id
+       WHERE sti.transaction_id = ?`,
+      [id]
+    );
 
-    const t = transaction as any;
     return {
-      ...t,
-      customers: t.customers || null,
-      users: t.users || null,
-      sales_transaction_items: (items || []).map((item: any) => ({
+      id: transaction.id,
+      status: transaction.status,
+      total_amount: transaction.total_amount,
+      notes: transaction.notes,
+      created_at: transaction.created_at,
+      customers: transaction.customer_name ? { store_name: transaction.customer_name } : null,
+      users: transaction.salesman_name ? { full_name: transaction.salesman_name } : null,
+      sales_transaction_items: items.map((item: any) => ({
         id: item.id,
         quantity: item.quantity,
         unit_price: item.unit_price,
         subtotal: item.subtotal,
-        product_variants: item.product_variants || null,
+        product_variants: item.variant_name ? { name: item.variant_name, sku: item.variant_sku } : null,
       })),
     };
   } catch {
@@ -91,10 +104,14 @@ export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
 
 export async function exportSalesCSV(): Promise<string> {
   try {
-    const { data: rows } = await supabase
-      .from("sales_transactions")
-      .select("id, status, total_amount, created_at, customers(store_name), users(full_name)")
-      .order("created_at", { ascending: false });
+    const rows = await query(
+      `SELECT st.id, st.status, st.total_amount, st.created_at,
+              c.store_name as customer_name, u.full_name as salesman_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       LEFT JOIN users u ON st.salesman_id = u.id
+       ORDER BY st.created_at DESC`
+    );
 
     if (!rows || rows.length === 0) return "";
 
@@ -102,8 +119,8 @@ export async function exportSalesCSV(): Promise<string> {
     const csvRows = rows.map((t: any) => [
       t.id,
       new Date(t.created_at).toLocaleDateString(),
-      t.customers?.store_name ?? "N/A",
-      t.users?.full_name ?? "N/A",
+      t.customer_name ?? "N/A",
+      t.salesman_name ?? "N/A",
       t.total_amount ?? 0,
       t.status,
     ]);
@@ -128,73 +145,45 @@ export interface CreateBookingInput {
 }
 
 export async function createBooking(input: CreateBookingInput) {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+
     const { customer_id, salesman_id, notes, items } = input;
     const total_amount = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const transactionId = generateUUID();
-    
+
     // 1. Create the sales transaction record
-    const { error: txError } = await supabase.from("sales_transactions").insert({
-      id: transactionId,
-      customer_id,
-      salesman_id,
-      total_amount,
-      notes: notes || null,
-      status: "pending",
-    });
-    if (txError) throw txError;
+    await connection.execute(
+      `INSERT INTO sales_transactions (id, customer_id, salesman_id, total_amount, notes, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [transactionId, customer_id, salesman_id, total_amount, notes || null]
+    );
 
-    // 2. Insert transaction items and immediately deduct inventory
-    if (items.length > 0) {
-      const itemRows = items.map((item) => ({
-        id: generateUUID(),
-        transaction_id: transactionId,
-        variant_id: item.variant_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        subtotal: item.quantity * item.unit_price,
-      }));
-      
-      const { error: itemsError } = await supabase.from("sales_transaction_items").insert(itemRows);
-      if (itemsError) throw itemsError;
+    // 2. Insert transaction items and deduct inventory
+    for (const item of items) {
+      await connection.execute(
+        `INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, total_price)
+         VALUES (?, ?, ?, ?, ?)`,
+        [transactionId, item.variant_id, item.quantity, item.unit_price, item.quantity * item.unit_price]
+      );
 
-      // INVENTORY REDUCTION LOGIC (IMMEDIATE)
-      console.log(`[Inventory] Deducting stock for new booking ${transactionId}`);
-      for (const item of items) {
-        // A. Find product ID for this variant
-        const { data: variant, error: vError } = await supabase
-          .from("product_variants")
-          .select("product_id")
-          .eq("id", item.variant_id)
-          .single();
-
-        if (vError || !variant) continue;
-
-        // B. Get current stock
-        const { data: product, error: pError } = await supabase
-          .from("products")
-          .select("total_cases")
-          .eq("id", variant.product_id)
-          .single();
-
-        if (pError || !product) continue;
-
-        // C. Subtract and update
-        const currentCases = product.total_cases || 0;
-        const newCases = currentCases - item.quantity;
-        
-        await supabase
-          .from("products")
-          .update({ total_cases: newCases })
-          .eq("id", variant.product_id);
-      }
+      // Deduct inventory via product directly
+      await connection.execute(
+        `UPDATE products
+         SET total_cases = total_cases - ?
+         WHERE id = ?`,
+        [item.quantity, item.variant_id]
+      );
     }
 
-    // 3. Dispatch Notifications
+    await connection.commit();
+
+    // 3. Dispatch Notifications (outside transaction)
     await notifyRole("admin", "New Order Created", `A new order has been placed by Salesman.`);
     await notifyRole("supervisor", "New Order Created", `A new order has been placed by Salesman.`);
 
-    // 4. Clear caches for everyone
+    // 4. Clear caches
     revalidatePath("/salesman/dashboard");
     revalidatePath("/bookings");
     revalidatePath("/notifications");
@@ -203,37 +192,51 @@ export async function createBooking(input: CreateBookingInput) {
     revalidatePath("/admin/orders");
     revalidatePath("/admin/catalog/products");
     revalidatePath("/supervisor/catalog/products");
-    
-    return { success: true, data: { id: transactionId } };
 
+    return { success: true, data: { id: transactionId } };
   } catch (error: any) {
+    await connection.rollback();
     console.error("createBooking error:", error);
     return { success: false, error: error.message };
+  } finally {
+    connection.release();
   }
 }
 
-
 export async function getAllBookings() {
   try {
-    const { data: transactions } = await supabase
-      .from("sales_transactions")
-      .select("*, customers(store_name), users(full_name)")
-      .order("created_at", { ascending: false });
+    const transactions = await query(
+      `SELECT st.*, c.store_name as customer_name, u.full_name as salesman_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       LEFT JOIN users u ON st.salesman_id = u.id
+       ORDER BY st.created_at DESC`
+    );
 
     if (!transactions || transactions.length === 0) return [];
 
     const transactionIds = transactions.map((t: any) => t.id);
-    const { data: items } = await supabase
-      .from("sales_transaction_items")
-      .select("*, product_variants(name, sku)")
-      .in("transaction_id", transactionIds);
+
+    // Fetch all items for these transactions
+    let allItems: any[] = [];
+    if (transactionIds.length > 0) {
+      const placeholders = transactionIds.map(() => '?').join(',');
+      allItems = await query(
+        `SELECT sti.id, sti.transaction_id, sti.product_id as variant_id, sti.quantity, sti.unit_price, sti.total_price as subtotal, 
+                p.name as variant_name, p.id as variant_sku
+         FROM transaction_items sti
+         LEFT JOIN products p ON sti.product_id = p.id
+         WHERE sti.transaction_id IN (${placeholders})`,
+        transactionIds
+      );
+    }
 
     const itemsMap = new Map<string, any[]>();
-    for (const item of (items || [])) {
+    for (const item of allItems) {
       if (!itemsMap.has(item.transaction_id)) itemsMap.set(item.transaction_id, []);
       itemsMap.get(item.transaction_id)!.push({
         ...item,
-        product_variants: item.product_variants || null,
+        product_variants: item.variant_name ? { name: item.variant_name, sku: item.variant_sku } : null,
       });
     }
 
@@ -246,8 +249,8 @@ export async function getAllBookings() {
       notes: t.notes,
       created_at: t.created_at,
       updated_at: t.updated_at,
-      customers: t.customers || null,
-      users: t.users || null,
+      customers: t.customer_name ? { store_name: t.customer_name } : null,
+      users: t.salesman_name ? { full_name: t.salesman_name } : null,
       sales_transaction_items: itemsMap.get(t.id) || [],
     }));
   } catch (error: any) {
@@ -257,36 +260,30 @@ export async function getAllBookings() {
 }
 
 export async function updateBookingStatus(transactionId: string, status: string) {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
+
     console.log(`[Inventory] Updating transaction ${transactionId} to ${status}`);
 
-    // 1. Fetch current status to check transition (Prevents double deduction)
-    const { data: currentTx, error: fetchError } = await supabase
-      .from("sales_transactions")
-      .select("status, salesman_id")
-      .eq("id", transactionId)
-      .single();
+    // 1. Fetch current status
+    const [currentRows] = await connection.execute(
+      "SELECT status, salesman_id FROM sales_transactions WHERE id = ?",
+      [transactionId]
+    );
+    const currentTx = (currentRows as any[])[0];
+    if (!currentTx) throw new Error("Transaction not found");
 
-    if (fetchError) {
-      console.error("[Inventory] Failed to fetch current transaction status:", fetchError);
-      throw fetchError;
-    }
+    console.log(`[Inventory] Current status is: ${currentTx.status}`);
 
-    console.log(`[Inventory] Current status is: ${currentTx?.status}`);
+    // 2. Update status
+    await connection.execute(
+      "UPDATE sales_transactions SET status = ? WHERE id = ?",
+      [status, transactionId]
+    );
 
-    // 2. Perform the status update in the DB
-    const { error: updateError } = await supabase
-      .from("sales_transactions")
-      .update({ status })
-      .eq("id", transactionId);
-      
-    if (updateError) {
-      console.error("[Inventory] Failed to update transaction status:", updateError);
-      throw updateError;
-    }
-
-    // -> Notify the Salesman!
-    if (currentTx?.salesman_id && currentTx.status !== status) {
+    // Notify the Salesman
+    if (currentTx.salesman_id && currentTx.status !== status) {
       await createNotification(
         currentTx.salesman_id,
         "Order Status Updated",
@@ -295,64 +292,33 @@ export async function updateBookingStatus(transactionId: string, status: string)
       );
     }
 
-
-    /**
-     * INVENTORY RESTORATION LOGIC
-     * Since inventory is now deducted immediately upon creation,
-     * we only need to act here if the order is CANCELLED.
-     */
+    // INVENTORY RESTORATION on CANCEL
     const isNowCancelled = status.toLowerCase() === "cancelled";
-    const wasAlreadyCancelled = currentTx?.status?.toLowerCase() === "cancelled";
+    const wasAlreadyCancelled = currentTx.status?.toLowerCase() === "cancelled";
 
     if (isNowCancelled && !wasAlreadyCancelled) {
       console.log(`[Inventory] Status changed to CANCELLED. Restoring deduction...`);
 
-      // A. Fetch all items for this transaction
-      const { data: items, error: itemsError } = await supabase
-        .from("sales_transaction_items")
-        .select("variant_id, quantity")
-        .eq("transaction_id", transactionId);
+      const [itemRows] = await connection.execute(
+        "SELECT product_id as variant_id, quantity FROM transaction_items WHERE transaction_id = ?",
+        [transactionId]
+      );
 
-      if (itemsError) {
-        console.error("[Inventory] Failed to fetch transaction items:", itemsError);
-        throw itemsError;
-      }
-
-      if (items && items.length > 0) {
-        for (const item of items) {
-          // B. Get the parent product_id from the variant
-          const { data: variant, error: vError } = await supabase
-            .from("product_variants")
-            .select("product_id")
-            .eq("id", item.variant_id)
-            .single();
-
-          if (vError || !variant) continue;
-
-          // C. Get current stock
-          const { data: product, error: pError } = await supabase
-            .from("products")
-            .select("total_cases")
-            .eq("id", variant.product_id)
-            .single();
-
-          if (pError || !product) continue;
-
-          // D. Add back to stock
-          const oldStock = product.total_cases || 0;
-          const newStock = oldStock + item.quantity; // <-- PLUS here!
-
-          await supabase
-            .from("products")
-            .update({ total_cases: newStock })
-            .eq("id", variant.product_id);
-            
-          console.log(`[Inventory] Restored ${item.quantity} cases to product ${variant.product_id}.`);
-        }
+      for (const item of (itemRows as any[])) {
+        // Restore stock directly to product
+        await connection.execute(
+          `UPDATE products
+           SET total_cases = total_cases + ?
+           WHERE id = ?`,
+          [item.quantity, item.variant_id]
+        );
+        console.log(`[Inventory] Restored ${item.quantity} cases for product ${item.variant_id}.`);
       }
     }
 
-    // 3. Clear all potential caches
+    await connection.commit();
+
+    // Clear caches
     revalidatePath("/bookings");
     revalidatePath("/sales");
     revalidatePath("/notifications");
@@ -361,15 +327,53 @@ export async function updateBookingStatus(transactionId: string, status: string)
     revalidatePath("/salesman/bookings");
     revalidatePath("/admin/catalog/products");
     revalidatePath("/supervisor/catalog/products");
-    
+
     console.log(`[Inventory] Update process finished for ${transactionId}`);
     return { success: true };
   } catch (error: any) {
+    await connection.rollback();
     console.error("[Inventory] CRITICAL ERROR in updateBookingStatus:", error);
     return { success: false, error: error.message };
+  } finally {
+    connection.release();
   }
 }
 
+export async function recordPayment(transactionId: string, amount: number, method: string = 'cash') {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
 
+    // 1. Get current transaction
+    const [rows] = await connection.execute(
+      "SELECT total_amount, payment_status FROM sales_transactions WHERE id = ?",
+      [transactionId]
+    );
+    const tx = (rows as any[])[0];
+    if (!tx) throw new Error("Transaction not found");
 
+    // 2. Update payment status
+    // Simple logic: if payment >= total, mark as paid. Otherwise partial.
+    const newStatus = amount >= Number(tx.total_amount) ? 'paid' : 'partial';
 
+    await connection.execute(
+      "UPDATE sales_transactions SET payment_status = ? WHERE id = ?",
+      [newStatus, transactionId]
+    );
+
+    // 3. (Optional) Create a specific record in an audit log or payments table if you create one later
+
+    await connection.commit();
+    revalidatePath("/admin/sales");
+    revalidatePath("/sales");
+    revalidatePath("/buyer/dashboard");
+    
+    return { success: true };
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("recordPayment error:", error);
+    return { success: false, error: error.message };
+  } finally {
+    connection.release();
+  }
+}

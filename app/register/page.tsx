@@ -87,9 +87,14 @@ export default function RegisterPage() {
                   <Input id="email" name="email" type="email" required className="bg-gray-50 border-gray-200 h-11" placeholder="maria@store.com" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone_number" className="text-xs font-bold uppercase tracking-wider text-gray-500">Phone Number</Label>
-                  <Input id="phone_number" name="phone_number" required className="bg-gray-50 border-gray-200 h-11" placeholder="+63 9XX XXX XXXX" />
+                  <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-gray-500">Account Password</Label>
+                  <Input id="password" name="password" type="password" required className="bg-gray-50 border-gray-200 h-11" placeholder="••••••••" />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone_number" className="text-xs font-bold uppercase tracking-wider text-gray-500">Phone Number</Label>
+                <Input id="phone_number" name="phone_number" required className="bg-gray-50 border-gray-200 h-11" placeholder="+63 9XX XXX XXXX" />
               </div>
 
               <div className="space-y-4 pt-4 border-t border-gray-100">

@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { execute } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 
@@ -10,17 +10,11 @@ export async function approveUser(userId: string) {
   }
 
   try {
-    const { error } = await supabase
-      .from("users")
-      .update({
-        status: "approved",
-        is_active: true,
-        approved_by: session.user.id,
-        approved_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-
-    if (error) throw error;
+    await execute(
+      `UPDATE users SET status = 'approved', is_active = 1, approved_by = ?, approved_at = NOW()
+       WHERE id = ?`,
+      [session.user.id, userId]
+    );
     revalidatePath("/admin/approvals");
     return { success: true };
   } catch (error: any) {
@@ -35,16 +29,11 @@ export async function rejectUser(userId: string, reason: string) {
   }
 
   try {
-    const { error } = await supabase
-      .from("users")
-      .update({
-        status: "rejected",
-        is_active: false,
-        rejection_reason: reason,
-      })
-      .eq("id", userId);
-
-    if (error) throw error;
+    await execute(
+      `UPDATE users SET status = 'rejected', is_active = 0, rejection_reason = ?
+       WHERE id = ?`,
+      [reason, userId]
+    );
     revalidatePath("/admin/approvals");
     return { success: true };
   } catch (error: any) {

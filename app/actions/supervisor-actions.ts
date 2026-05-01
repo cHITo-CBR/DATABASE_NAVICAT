@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne, execute } from "@/lib/db-helpers";
 
 // ══════════════════════════════════════════════════════════════
 // TYPES
@@ -10,7 +10,6 @@ export interface SupervisorKPIs {
   visitsToday: number;
   submittedCallsheets: number;
   pendingCallsheetReviews: number;
-
   pendingBookings: number;
   monthlySalesTotal: number;
   lowStockItems: number;
@@ -36,34 +35,27 @@ export async function getSupervisorKPIs(): Promise<SupervisorKPIs> {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
   try {
-    const [
-      activeSalesmen,
-      visitsToday,
-      submittedCallsheets,
-      pendingBookings,
-      salesData,
-      lowStockItems,
-    ] = await Promise.all([
-      supabase.from("users").select("*", { count: "exact", head: true }).eq("role_id", 3).eq("is_active", true),
-      supabase.from("store_visits").select("*", { count: "exact", head: true }).gte("visit_date", today),
-      supabase.from("callsheets").select("*", { count: "exact", head: true }).eq("status", "submitted"),
-      supabase.from("sales_transactions").select("*", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("sales_transactions").select("total_amount").gte("created_at", monthStart),
-      supabase.from("inventory_ledger").select("*", { count: "exact", head: true }).lt("balance", 10),
+    const [activeSalesmenRow, visitsTodayRow, submittedRow, pendingBookingsRow, salesData, lowStockRow] = await Promise.all([
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE role_id = 3 AND is_active = 1"),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM store_visits WHERE visit_date >= ?", [today]),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE status = 'submitted'"),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM sales_transactions WHERE status = 'pending'"),
+      query("SELECT total_amount FROM sales_transactions WHERE created_at >= ?", [monthStart]),
+      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM inventory_ledger WHERE balance < 10"),
     ]);
 
-    const monthlySalesTotal = (salesData.data || []).reduce(
+    const monthlySalesTotal = (salesData || []).reduce(
       (sum: number, t: any) => sum + (Number(t.total_amount) || 0), 0
     );
 
     return {
-      activeSalesmen: activeSalesmen.count ?? 0,
-      visitsToday: visitsToday.count ?? 0,
-      submittedCallsheets: submittedCallsheets.count ?? 0,
-      pendingCallsheetReviews: submittedCallsheets.count ?? 0,
-      pendingBookings: pendingBookings.count ?? 0,
+      activeSalesmen: activeSalesmenRow?.count ?? 0,
+      visitsToday: visitsTodayRow?.count ?? 0,
+      submittedCallsheets: submittedRow?.count ?? 0,
+      pendingCallsheetReviews: submittedRow?.count ?? 0,
+      pendingBookings: pendingBookingsRow?.count ?? 0,
       monthlySalesTotal,
-      lowStockItems: lowStockItems.count ?? 0,
+      lowStockItems: lowStockRow?.count ?? 0,
     };
   } catch (error) {
     console.error("Error fetching supervisor KPIs:", error);
@@ -80,19 +72,17 @@ export async function getTeamSalesmen(): Promise<TeamSalesman[]> {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
   try {
-    const { data: salesmen } = await supabase
-      .from("users")
-      .select("id, full_name, email, status, is_active")
-      .eq("role_id", 3)
-      .order("full_name");
+    const salesmen = await query(
+      "SELECT id, full_name, email, status, is_active FROM users WHERE role_id = 3 ORDER BY full_name"
+    );
 
     const results: TeamSalesman[] = await Promise.all(
       (salesmen || []).map(async (s: any) => {
-        const [visitsToday, totalCallsheets, confirmedBookings, salesData] = await Promise.all([
-          supabase.from("store_visits").select("*", { count: "exact", head: true }).eq("salesman_id", s.id).gte("visit_date", today),
-          supabase.from("callsheets").select("*", { count: "exact", head: true }).eq("salesman_id", s.id),
-          supabase.from("sales_transactions").select("*", { count: "exact", head: true }).eq("salesman_id", s.id).neq("status", "cancelled"),
-          supabase.from("sales_transactions").select("total_amount").eq("salesman_id", s.id).gte("created_at", monthStart),
+        const [visitsTodayRow, totalCallsheetsRow, confirmedBookingsRow, salesData] = await Promise.all([
+          queryOne<{ count: number }>("SELECT COUNT(*) as count FROM store_visits WHERE salesman_id = ? AND visit_date >= ?", [s.id, today]),
+          queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE salesman_id = ?", [s.id]),
+          queryOne<{ count: number }>("SELECT COUNT(*) as count FROM sales_transactions WHERE salesman_id = ? AND status != 'cancelled'", [s.id]),
+          query("SELECT total_amount FROM sales_transactions WHERE salesman_id = ? AND created_at >= ?", [s.id, monthStart]),
         ]);
 
         return {
@@ -100,10 +90,10 @@ export async function getTeamSalesmen(): Promise<TeamSalesman[]> {
           full_name: s.full_name,
           email: s.email,
           status: s.is_active ? "active" : "inactive",
-          visitsToday: visitsToday.count ?? 0,
-          totalCallsheets: totalCallsheets.count ?? 0,
-          confirmedBookings: confirmedBookings.count ?? 0,
-          monthlySales: (salesData.data || []).reduce((sum: number, t: any) => sum + (Number(t.total_amount) || 0), 0),
+          visitsToday: visitsTodayRow?.count ?? 0,
+          totalCallsheets: totalCallsheetsRow?.count ?? 0,
+          confirmedBookings: confirmedBookingsRow?.count ?? 0,
+          monthlySales: (salesData || []).reduce((sum: number, t: any) => sum + (Number(t.total_amount) || 0), 0),
         };
       })
     );
@@ -117,18 +107,36 @@ export async function getTeamSalesmen(): Promise<TeamSalesman[]> {
 
 export async function getSalesmanDetail(salesmanId: string) {
   try {
-    const [profileRes, visitsRes, callsheetsRes, bookingsRes] = await Promise.all([
-      supabase.from("users").select("id, full_name, email, phone_number, status, created_at").eq("id", salesmanId).maybeSingle(),
-      supabase.from("store_visits").select("*, customers(store_name)").eq("salesman_id", salesmanId).order("visit_date", { ascending: false }).limit(20),
-      supabase.from("callsheets").select("*, customers(store_name)").eq("salesman_id", salesmanId).order("created_at", { ascending: false }).limit(20),
-      supabase.from("sales_transactions").select("*, customers(store_name)").eq("salesman_id", salesmanId).order("created_at", { ascending: false }).limit(20),
+    const [profile, visits, callsheets, bookings] = await Promise.all([
+      queryOne(
+        "SELECT id, full_name, email, phone_number, status, created_at FROM users WHERE id = ?",
+        [salesmanId]
+      ),
+      query(
+        `SELECT sv.*, c.store_name FROM store_visits sv
+         LEFT JOIN customers c ON sv.customer_id = c.id
+         WHERE sv.salesman_id = ? ORDER BY sv.visit_date DESC LIMIT 20`,
+        [salesmanId]
+      ),
+      query(
+        `SELECT cs.*, c.store_name FROM callsheets cs
+         LEFT JOIN customers c ON cs.customer_id = c.id
+         WHERE cs.salesman_id = ? ORDER BY cs.created_at DESC LIMIT 20`,
+        [salesmanId]
+      ),
+      query(
+        `SELECT st.*, c.store_name FROM sales_transactions st
+         LEFT JOIN customers c ON st.customer_id = c.id
+         WHERE st.salesman_id = ? ORDER BY st.created_at DESC LIMIT 20`,
+        [salesmanId]
+      ),
     ]);
 
     return {
-      profile: profileRes.data || null,
-      visits: visitsRes.data || [],
-      callsheets: callsheetsRes.data || [],
-      bookings: bookingsRes.data || [],
+      profile: profile || null,
+      visits: visits.map((v: any) => ({ ...v, customers: v.store_name ? { store_name: v.store_name } : null })),
+      callsheets: callsheets.map((cs: any) => ({ ...cs, customers: cs.store_name ? { store_name: cs.store_name } : null })),
+      bookings: bookings.map((b: any) => ({ ...b, customers: b.store_name ? { store_name: b.store_name } : null })),
     };
   } catch (error) {
     console.error("Error fetching salesman detail:", error);
@@ -142,16 +150,14 @@ export async function getSalesmanDetail(salesmanId: string) {
 
 export async function getTeamCustomers() {
   try {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*, users:assigned_salesman_id(full_name)")
-      .eq("is_active", true)
-      .order("store_name");
-    if (error) throw error;
-    return (data || []).map((c: any) => ({
-      ...c,
-      salesman_name: c.users?.full_name || null,
-    }));
+    const rows = await query(
+      `SELECT c.*, u.full_name as salesman_name
+       FROM customers c
+       LEFT JOIN users u ON c.assigned_salesman_id = u.id
+       WHERE c.is_active = 1
+       ORDER BY c.store_name`
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching team customers:", error);
     return [];
@@ -164,17 +170,15 @@ export async function getTeamCustomers() {
 
 export async function getTeamVisits() {
   try {
-    const { data, error } = await supabase
-      .from("store_visits")
-      .select("*, customers(store_name), users:salesman_id(full_name)")
-      .order("visit_date", { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    return (data || []).map((v: any) => ({
-      ...v,
-      store_name: v.customers?.store_name || null,
-      salesman_name: v.users?.full_name || null,
-    }));
+    const rows = await query(
+      `SELECT sv.*, c.store_name, u.full_name as salesman_name
+       FROM store_visits sv
+       LEFT JOIN customers c ON sv.customer_id = c.id
+       LEFT JOIN users u ON sv.salesman_id = u.id
+       ORDER BY sv.visit_date DESC
+       LIMIT 100`
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching team visits:", error);
     return [];
@@ -187,26 +191,37 @@ export async function getTeamVisits() {
 
 export async function getCallsheetDetail(callsheetId: string) {
   try {
-    const { data: callsheet } = await supabase
-      .from("callsheets")
-      .select("*, customers(store_name, address), users:salesman_id(full_name, email)")
-      .eq("id", callsheetId)
-      .maybeSingle();
+    const callsheet = await queryOne(
+      `SELECT cs.*, c.store_name, c.address, u.full_name as salesman_name, u.email as salesman_email
+       FROM callsheets cs
+       LEFT JOIN customers c ON cs.customer_id = c.id
+       LEFT JOIN users u ON cs.salesman_id = u.id
+       WHERE cs.id = ?`,
+      [callsheetId]
+    );
 
     if (!callsheet) return null;
 
-    const { data: items } = await supabase
-      .from("callsheet_items")
-      .select("*, products(name, total_packaging, net_weight)")
-      .eq("callsheet_id", callsheetId);
+    const items = await query(
+      `SELECT ci.*, p.name as product_name, p.total_packaging, p.net_weight
+       FROM callsheet_items ci
+       LEFT JOIN products p ON ci.product_id = p.id
+       WHERE ci.callsheet_id = ?`,
+      [callsheetId]
+    );
 
     return {
       ...callsheet,
-      store_name: callsheet.customers?.store_name || null,
-      address: callsheet.customers?.address || null,
-      salesman_name: callsheet.users?.full_name || null,
-      salesman_email: callsheet.users?.email || null,
-      callsheet_items: items || [],
+      store_name: callsheet.store_name || null,
+      address: callsheet.address || null,
+      salesman_name: callsheet.salesman_name || null,
+      salesman_email: callsheet.salesman_email || null,
+      customers: callsheet.store_name ? { store_name: callsheet.store_name, address: callsheet.address } : null,
+      users: callsheet.salesman_name ? { full_name: callsheet.salesman_name, email: callsheet.salesman_email } : null,
+      callsheet_items: items.map((i: any) => ({
+        ...i,
+        products: i.product_name ? { name: i.product_name, total_packaging: i.total_packaging, net_weight: i.net_weight } : null,
+      })),
     };
   } catch (error) {
     console.error("Error fetching callsheet detail:", error);
@@ -216,11 +231,10 @@ export async function getCallsheetDetail(callsheetId: string) {
 
 export async function reviewCallsheet(callsheetId: string, status: "approved" | "rejected", supervisorNote?: string) {
   try {
-    const { error } = await supabase
-      .from("callsheets")
-      .update({ status, remarks: supervisorNote || null })
-      .eq("id", callsheetId);
-    if (error) throw error;
+    await execute(
+      "UPDATE callsheets SET status = ?, remarks = ? WHERE id = ?",
+      [status, supervisorNote || null, callsheetId]
+    );
     return { success: true };
   } catch (error: any) {
     console.error("Error reviewing callsheet:", error);
@@ -234,31 +248,41 @@ export async function reviewCallsheet(callsheetId: string, status: "approved" | 
 
 export async function getTeamBuyerRequests() {
   try {
-    const { data: requests } = await supabase
-      .from("buyer_requests")
-      .select("*, customers(store_name), users:salesman_id(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const requests = await query(
+      `SELECT br.*, c.store_name, u.full_name as salesman_name
+       FROM buyer_requests br
+       LEFT JOIN customers c ON br.customer_id = c.id
+       LEFT JOIN users u ON br.salesman_id = u.id
+       ORDER BY br.created_at DESC
+       LIMIT 100`
+    );
 
     const requestIds = (requests || []).map((r: any) => r.id);
     let itemsMap = new Map<string, any[]>();
 
     if (requestIds.length > 0) {
-      const { data: items } = await supabase
-        .from("buyer_request_items")
-        .select("*, products(name)")
-        .in("request_id", requestIds);
+      const placeholders = requestIds.map(() => '?').join(',');
+      const items = await query(
+        `SELECT bri.*, p.name as product_name
+         FROM buyer_request_items bri
+         LEFT JOIN products p ON bri.product_id = p.id
+         WHERE bri.request_id IN (${placeholders})`,
+        requestIds
+      );
 
-      for (const item of (items || [])) {
+      for (const item of items) {
         if (!itemsMap.has(item.request_id)) itemsMap.set(item.request_id, []);
-        itemsMap.get(item.request_id)!.push(item);
+        itemsMap.get(item.request_id)!.push({
+          ...item,
+          products: item.product_name ? { name: item.product_name } : null,
+        });
       }
     }
 
-    return (requests || []).map((r: any) => ({
+    return requests.map((r: any) => ({
       ...r,
-      store_name: r.customers?.store_name || null,
-      salesman_name: r.users?.full_name || null,
+      store_name: r.store_name || null,
+      salesman_name: r.salesman_name || null,
       buyer_request_items: itemsMap.get(r.id) || [],
     }));
   } catch (error) {
@@ -273,17 +297,15 @@ export async function getTeamBuyerRequests() {
 
 export async function getTeamBookings() {
   try {
-    const { data, error } = await supabase
-      .from("sales_transactions")
-      .select("*, customers(store_name), users:salesman_id(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error) throw error;
-    return (data || []).map((t: any) => ({
-      ...t,
-      store_name: t.customers?.store_name || null,
-      salesman_name: t.users?.full_name || null,
-    }));
+    const rows = await query(
+      `SELECT st.*, c.store_name, u.full_name as salesman_name
+       FROM sales_transactions st
+       LEFT JOIN customers c ON st.customer_id = c.id
+       LEFT JOIN users u ON st.salesman_id = u.id
+       ORDER BY st.created_at DESC
+       LIMIT 100`
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching team bookings:", error);
     return [];
@@ -296,31 +318,37 @@ export async function getTeamBookings() {
 
 export async function getInventoryImpact() {
   try {
-    const { data: lowStock } = await supabase
-      .from("inventory_ledger")
-      .select("*, product_variants:product_variant_id(name, sku, products:product_id(name))")
-      .lt("balance", 10)
-      .order("balance", { ascending: true })
-      .limit(20);
+    const lowStock = await query(
+      `SELECT il.*, pv.name as variant_name, pv.sku, p.name as product_name
+       FROM inventory_ledger il
+       LEFT JOIN product_variants pv ON il.product_variant_id = pv.id
+       LEFT JOIN products p ON pv.product_id = p.id
+       WHERE il.balance < 10
+       ORDER BY il.balance ASC
+       LIMIT 20`
+    );
 
-    const { data: recentMovements } = await supabase
-      .from("inventory_ledger")
-      .select("*, product_variants:product_variant_id(name, sku, products:product_id(name))")
-      .order("created_at", { ascending: false })
-      .limit(20);
+    const recentMovements = await query(
+      `SELECT il.*, pv.name as variant_name, pv.sku, p.name as product_name
+       FROM inventory_ledger il
+       LEFT JOIN product_variants pv ON il.product_variant_id = pv.id
+       LEFT JOIN products p ON pv.product_id = p.id
+       ORDER BY il.created_at DESC
+       LIMIT 20`
+    );
 
     return {
-      lowStock: (lowStock || []).map((item: any) => ({
+      lowStock: lowStock.map((item: any) => ({
         ...item,
-        variant_name: item.product_variants?.name || null,
-        sku: item.product_variants?.sku || null,
-        product_name: item.product_variants?.products?.name || null,
+        variant_name: item.variant_name || null,
+        sku: item.sku || null,
+        product_name: item.product_name || null,
       })),
-      recentMovements: (recentMovements || []).map((item: any) => ({
+      recentMovements: recentMovements.map((item: any) => ({
         ...item,
-        variant_name: item.product_variants?.name || null,
-        sku: item.product_variants?.sku || null,
-        product_name: item.product_variants?.products?.name || null,
+        variant_name: item.variant_name || null,
+        sku: item.sku || null,
+        product_name: item.product_name || null,
       })),
     };
   } catch (error) {
@@ -335,34 +363,34 @@ export async function getInventoryImpact() {
 
 export async function getRecentTeamActivity() {
   try {
-    const [visitsRes, callsheetsRes, requestsRes] = await Promise.all([
-      supabase.from("store_visits")
-        .select("id, visit_date, created_at, customers(store_name), users:salesman_id(full_name)")
-        .order("created_at", { ascending: false }).limit(5),
-      supabase.from("callsheets")
-        .select("id, status, created_at, customers(store_name), users:salesman_id(full_name)")
-        .order("created_at", { ascending: false }).limit(5),
-      supabase.from("buyer_requests")
-        .select("id, status, created_at, customers(store_name), users:salesman_id(full_name)")
-        .order("created_at", { ascending: false }).limit(5),
+    const [visits, callsheets, requests] = await Promise.all([
+      query(
+        `SELECT sv.id, sv.visit_date, sv.created_at, c.store_name, u.full_name as salesman_name
+         FROM store_visits sv
+         LEFT JOIN customers c ON sv.customer_id = c.id
+         LEFT JOIN users u ON sv.salesman_id = u.id
+         ORDER BY sv.created_at DESC LIMIT 5`
+      ),
+      query(
+        `SELECT cs.id, cs.status, cs.created_at, c.store_name, u.full_name as salesman_name
+         FROM callsheets cs
+         LEFT JOIN customers c ON cs.customer_id = c.id
+         LEFT JOIN users u ON cs.salesman_id = u.id
+         ORDER BY cs.created_at DESC LIMIT 5`
+      ),
+      query(
+        `SELECT br.id, br.status, br.created_at, c.store_name, u.full_name as salesman_name
+         FROM buyer_requests br
+         LEFT JOIN customers c ON br.customer_id = c.id
+         LEFT JOIN users u ON br.salesman_id = u.id
+         ORDER BY br.created_at DESC LIMIT 5`
+      ),
     ]);
 
     return {
-      visits: (visitsRes.data || []).map((v: any) => ({
-        ...v,
-        store_name: v.customers?.store_name || null,
-        salesman_name: v.users?.full_name || null,
-      })),
-      callsheets: (callsheetsRes.data || []).map((cs: any) => ({
-        ...cs,
-        store_name: cs.customers?.store_name || null,
-        salesman_name: cs.users?.full_name || null,
-      })),
-      requests: (requestsRes.data || []).map((br: any) => ({
-        ...br,
-        store_name: br.customers?.store_name || null,
-        salesman_name: br.users?.full_name || null,
-      })),
+      visits: visits.map((v: any) => ({ ...v, store_name: v.store_name || null, salesman_name: v.salesman_name || null })),
+      callsheets: callsheets.map((cs: any) => ({ ...cs, store_name: cs.store_name || null, salesman_name: cs.salesman_name || null })),
+      requests: requests.map((br: any) => ({ ...br, store_name: br.store_name || null, salesman_name: br.salesman_name || null })),
     };
   } catch (error) {
     console.error("Error fetching recent team activity:", error);

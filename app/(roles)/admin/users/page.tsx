@@ -143,7 +143,6 @@ export default function UsersManagementPage() {
       <Tabs defaultValue="users" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="users">System Users</TabsTrigger>
-          <TabsTrigger value="store-registrations">Store Registrations</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-0">
@@ -223,55 +222,6 @@ export default function UsersManagementPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="store-registrations" className="mt-0">
-          <Card className="shadow-sm border-0 rounded-xl">
-            <CardHeader className="py-4 border-b border-gray-100 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-lg text-gray-900">Pending Store Registrations</CardTitle>
-                <p className="text-sm text-gray-500 mt-1">Review and approve applications for buyer/store accounts.</p>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-gray-50/50">
-                  <TableRow>
-                    <TableHead>Store Name</TableHead>
-                    <TableHead>Contact Person</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Date Applied</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow className="hover:bg-gray-50/50">
-                    <TableCell className="font-medium text-gray-900">Sari-Sari Central</TableCell>
-                    <TableCell className="text-gray-500">Maria Clara</TableCell>
-                    <TableCell className="text-gray-500">maria@sarisari.com</TableCell>
-                    <TableCell className="text-gray-500">Oct 24, 2023</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => alert('This action is currently static. It will cancel the registration.')}>Reject</Button>
-                        <Button size="sm" className="bg-gray-800 hover:bg-gray-900 text-white" onClick={() => alert('This action is currently static. It will approve the registration.')}>Approve</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className="hover:bg-gray-50/50">
-                    <TableCell className="font-medium text-gray-900">Pasig Minimart</TableCell>
-                    <TableCell className="text-gray-500">Jose Rizal</TableCell>
-                    <TableCell className="text-gray-500">jose@minimart.com</TableCell>
-                    <TableCell className="text-gray-500">Oct 25, 2023</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => alert('This action is currently static. It will cancel the registration.')}>Reject</Button>
-                        <Button size="sm" className="bg-gray-800 hover:bg-gray-900 text-white" onClick={() => alert('This action is currently static. It will approve the registration.')}>Approve</Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   );

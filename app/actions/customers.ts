@@ -2,20 +2,11 @@
 
 /**
  * CUSTOMER MANAGEMENT ACTIONS
- * This file handles all operations related to customer/store profiles.
- * Features:
- * - Fetching customer lists and unified statistics
- * - Creating and updating customer profiles
- * - Assigning customers to specific salesmen
  */
 
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID, buildLikeSearch } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 
-/**
- * Represents a customer/store record.
- */
 export interface CustomerRow {
   id: string;
   store_name: string;
@@ -27,65 +18,48 @@ export interface CustomerRow {
   region: string | null;
   is_active: boolean;
   created_at: string;
-  salesman_name?: string | null; // Joined name of the assigned salesman
+  salesman_name?: string | null;
 }
 
-/**
- * High-level counts for dashboard overview cards.
- */
 export interface CustomerStats {
   totalActive: number;
   newThisMonth: number;
 }
 
-/**
- * Retrieves all active customers from the database.
- * Includes the name of the salesman assigned to each store.
- */
 export async function getCustomers(): Promise<CustomerRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*, users:assigned_salesman_id(full_name)")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    // Map joined user data to a flatter structure
-    return (data || []).map((c: any) => ({
-      ...c,
-      salesman_name: c.users?.full_name || null,
-    }));
+    const rows = await query(
+      `SELECT c.*, u.full_name as salesman_name
+       FROM customers c
+       LEFT JOIN users u ON c.assigned_salesman_id = u.id
+       WHERE c.is_active = 1
+       ORDER BY c.created_at DESC`
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching customers:", error);
     return [];
   }
 }
 
-/**
- * Calculates quick stats for the customers dashboard.
- */
 export async function getCustomerStats(): Promise<CustomerStats> {
   try {
-    // Count total active stores
-    const { count: totalActive } = await supabase
-      .from("customers")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true);
+    const totalRow = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM customers WHERE is_active = 1"
+    );
 
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    // Count stores registered within the current calendar month
-    const { count: newThisMonth } = await supabase
-      .from("customers")
-      .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfMonth.toISOString());
+    const newRow = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM customers WHERE created_at >= ?",
+      [startOfMonth.toISOString()]
+    );
 
     return {
-      totalActive: totalActive ?? 0,
-      newThisMonth: newThisMonth ?? 0,
+      totalActive: totalRow?.count ?? 0,
+      newThisMonth: newRow?.count ?? 0,
     };
   } catch (error) {
     console.error("Error fetching customer stats:", error);
@@ -93,9 +67,6 @@ export async function getCustomerStats(): Promise<CustomerStats> {
   }
 }
 
-/**
- * Creates a new customer profile.
- */
 export async function createCustomer(formData: FormData) {
   const storeName = formData.get("storeName") as string;
   const contactPerson = formData.get("contactPerson") as string;
@@ -109,20 +80,12 @@ export async function createCustomer(formData: FormData) {
   if (!storeName) return { error: "Store name is required." };
 
   try {
-    const { error } = await supabase.from("customers").insert({
-      id: generateUUID(),
-      store_name: storeName,
-      contact_person: contactPerson || null,
-      phone: phone || null,
-      email: email || null,
-      address: address || null,
-      city: city || null,
-      region: region || null,
-      assigned_salesman_id: assignedSalesmanId || null,
-      is_active: true,
-    });
-
-    if (error) throw error;
+    await execute(
+      `INSERT INTO customers (id, store_name, contact_person, phone, email, address, city, region, assigned_salesman_id, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [generateUUID(), storeName, contactPerson || null, phone || null, email || null,
+       address || null, city || null, region || null, assignedSalesmanId || null]
+    );
     revalidatePath("/customers");
     return { success: true };
   } catch (error: any) {
@@ -130,75 +93,49 @@ export async function createCustomer(formData: FormData) {
   }
 }
 
-/**
- * Fetches a list of active salesmen available for store assignment.
- */
 export async function getSalesmenForAssignment(): Promise<{ id: string; full_name: string }[]> {
   try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name")
-      .eq("is_active", true)
-      .order("full_name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT id, full_name FROM users WHERE is_active = 1 ORDER BY full_name");
   } catch (error) {
     console.error("Error fetching salesmen:", error);
     return [];
   }
 }
 
-/**
- * Retrieves the specific list of customers assigned to a particular salesman.
- */
 export async function getSalesmanCustomers(salesmanId: string): Promise<CustomerRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*, users:assigned_salesman_id(full_name)")
-      .eq("assigned_salesman_id", salesmanId)
-      .eq("is_active", true)
-      .order("store_name");
-    if (error) throw error;
-    return (data || []).map((c: any) => ({
-      ...c,
-      salesman_name: c.users?.full_name || null,
-    }));
+    const rows = await query(
+      `SELECT c.*, u.full_name as salesman_name
+       FROM customers c
+       LEFT JOIN users u ON c.assigned_salesman_id = u.id
+       WHERE c.assigned_salesman_id = ? AND c.is_active = 1
+       ORDER BY c.store_name`,
+      [salesmanId]
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching salesman customers:", error);
     return [];
   }
 }
 
-/**
- * Fetches customers who haven't been assigned to any salesman yet.
- */
 export async function getUnassignedCustomers(): Promise<CustomerRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .is("assigned_salesman_id", null)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return (data || []).map((c: any) => ({ ...c, salesman_name: null }));
+    const rows = await query(
+      `SELECT * FROM customers
+       WHERE assigned_salesman_id IS NULL AND is_active = 1
+       ORDER BY created_at DESC`
+    );
+    return rows.map((c: any) => ({ ...c, salesman_name: null }));
   } catch (error) {
     console.error("Error fetching unassigned customers:", error);
     return [];
   }
 }
 
-/**
- * Updates a store's assignment to a new salesman.
- */
 export async function assignCustomerToSalesman(customerId: string, salesmanId: string) {
   try {
-    const { error } = await supabase
-      .from("customers")
-      .update({ assigned_salesman_id: salesmanId })
-      .eq("id", customerId);
-    if (error) throw error;
+    await execute("UPDATE customers SET assigned_salesman_id = ? WHERE id = ?", [salesmanId, customerId]);
     revalidatePath("/salesman/customers");
     revalidatePath("/admin/customers");
     return { success: true };
@@ -207,9 +144,6 @@ export async function assignCustomerToSalesman(customerId: string, salesmanId: s
   }
 }
 
-/**
- * Updates the profile information for an existing customer.
- */
 export async function updateCustomer(id: string, formData: FormData) {
   const storeName = formData.get("storeName") as string;
   const contactPerson = formData.get("contactPerson") as string;
@@ -223,21 +157,12 @@ export async function updateCustomer(id: string, formData: FormData) {
   if (!storeName) return { error: "Store name is required." };
 
   try {
-    const { error } = await supabase
-      .from("customers")
-      .update({
-        store_name: storeName,
-        contact_person: contactPerson || null,
-        phone: phone || null,
-        email: email || null,
-        address: address || null,
-        city: city || null,
-        region: region || null,
-      })
-      .eq("id", id);
-
-    if (error) throw error;
-    // Rebuild the cached pages to show the updated data
+    await execute(
+      `UPDATE customers SET store_name = ?, contact_person = ?, phone = ?, email = ?,
+       address = ?, city = ?, region = ? WHERE id = ?`,
+      [storeName, contactPerson || null, phone || null, email || null,
+       address || null, city || null, region || null, id]
+    );
     revalidatePath(`/admin/customers/${id}`);
     revalidatePath("/admin/customers");
     return { success: true };
@@ -245,4 +170,3 @@ export async function updateCustomer(id: string, formData: FormData) {
     return { error: error.message || "Failed to update customer." };
   }
 }
-

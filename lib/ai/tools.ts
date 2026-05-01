@@ -1,34 +1,26 @@
-import supabase from "@/lib/db";
+import { query, queryOne } from "@/lib/db-helpers";
 
 // 🔹 Low stock
 export async function getLowStock() {
-  const { data, error } = await supabase
-    .from("products")
-    .select("name, total_cases")
-    .lt("total_cases", 10)
-    .eq("is_archived", false);
-  
-  if (error) throw error;
-  return data;
+  return await query(
+    "SELECT name, total_cases FROM products WHERE total_cases < 10 AND is_archived = 0"
+  );
 }
 
 // 🔹 Top salesman
 export async function getTopSalesman() {
-  const { data, error } = await supabase
-    .from("sales_transactions")
-    .select(`
-      salesman_id,
-      total_amount,
-      users:salesman_id (full_name)
-    `)
-    .eq("status", "completed");
+  const data = await query(
+    `SELECT st.salesman_id, st.total_amount, u.full_name
+     FROM sales_transactions st
+     LEFT JOIN users u ON st.salesman_id = u.id
+     WHERE st.status = 'completed'`
+  );
 
-  if (error) throw error;
   if (!data || data.length === 0) return null;
 
   // Aggregate by salesman
   const aggregated = data.reduce((acc: any, curr: any) => {
-    const name = curr.users?.full_name || "Unknown";
+    const name = curr.full_name || "Unknown";
     if (!acc[name]) {
       acc[name] = 0;
     }
@@ -42,20 +34,17 @@ export async function getTopSalesman() {
 
 // 🔹 Top Customer
 export async function getTopCustomer() {
-  const { data, error } = await supabase
-    .from("sales_transactions")
-    .select(`
-      customer_id,
-      total_amount,
-      customers:customer_id (store_name)
-    `)
-    .eq("status", "completed");
+  const data = await query(
+    `SELECT st.customer_id, st.total_amount, c.store_name
+     FROM sales_transactions st
+     LEFT JOIN customers c ON st.customer_id = c.id
+     WHERE st.status = 'completed'`
+  );
 
-  if (error) throw error;
   if (!data || data.length === 0) return null;
 
   const aggregated = data.reduce((acc: any, curr: any) => {
-    const name = curr.customers?.store_name || "Unknown Store";
+    const name = curr.store_name || "Unknown Store";
     acc[name] = (acc[name] || 0) + Number(curr.total_amount);
     return acc;
   }, {});
@@ -66,12 +55,9 @@ export async function getTopCustomer() {
 
 // 🔹 Sales Summary
 export async function getSalesSummary() {
-  const { data, error } = await supabase
-    .from("sales_transactions")
-    .select("total_amount")
-    .eq("status", "completed");
+  const row = await queryOne<{ total: number; count: number }>(
+    "SELECT COALESCE(SUM(total_amount), 0) as total, COUNT(*) as count FROM sales_transactions WHERE status = 'completed'"
+  );
 
-  if (error) throw error;
-  const total = data.reduce((sum, item) => sum + Number(item.total_amount), 0);
-  return { total, count: data.length };
+  return { total: row?.total ?? 0, count: row?.count ?? 0 };
 }

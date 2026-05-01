@@ -1,99 +1,109 @@
-"use client";
 
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Suspense } from "react";
+import { getAppointments } from "@/app/actions/appointments";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Loader2, Inbox } from "lucide-react";
-import { getStoreVisits, getVisitReport, type StoreVisitRow, type VisitReportDetail } from "@/app/actions/visits";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Plus, MapPin, User, Clock } from "lucide-react";
+import Link from "next/link";
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-      <Inbox className="w-10 h-10 mb-2" />
-      <p className="text-sm font-medium">{message}</p>
-    </div>
-  );
-}
-
-export default function StoreVisitsPage() {
-  const [visits, setVisits] = useState<StoreVisitRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [report, setReport] = useState<VisitReportDetail | null>(null);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [reportLoading, setReportLoading] = useState(false);
-
-  useEffect(() => {
-    getStoreVisits().then((data) => {
-      setVisits(data);
-      setLoading(false);
-    });
-  }, []);
-
-  async function handleViewReport(id: string) {
-    setReportLoading(true);
-    setReportOpen(true);
-    const r = await getVisitReport(id);
-    setReport(r);
-    setReportLoading(false);
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#005914]" />
-      </div>
-    );
-  }
+export default async function AdminVisitsPage() {
+  const appointments = await getAppointments();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Store Visits Log</h1>
-          <p className="text-gray-500 text-sm">Track field salesman visits, location check-ins, and discussed SKUs.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-[#1E293B]">Visit Schedule</h1>
+          <p className="text-muted-foreground mt-1">Manage and track salesman route schedules and appointments.</p>
         </div>
+        <Button asChild>
+          <Link href="/admin/visits/new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Appointment
+          </Link>
+        </Button>
       </div>
 
-      <Card className="shadow-sm border-0 rounded-xl">
-        <CardHeader className="py-4 border-b border-gray-100 flex flex-row items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-gray-800">Visit History</CardTitle>
+      <div className="grid gap-6 md:grid-cols-4">
+        <Card className="border-none shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Today's Visits</CardTitle>
+            <Calendar className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{appointments.filter((a: any) => new Date(a.scheduled_at).toDateString() === new Date().toDateString()).length}</div>
+          </CardContent>
+        </Card>
+        
+        <Card className="border-none shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+            <Clock className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{appointments.filter((a: any) => a.status === 'pending').length}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-none shadow-sm">
+        <CardHeader>
+          <CardTitle>Master Schedule</CardTitle>
+          <CardDescription>All scheduled field operations across all sales representatives.</CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          {visits.length === 0 ? (
-            <EmptyState message="No store visits recorded yet" />
+        <CardContent>
+          {appointments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg">
+              <Calendar className="h-12 w-12 text-muted-foreground/20" />
+              <h3 className="mt-4 text-lg font-semibold">No appointments scheduled</h3>
+              <p className="text-muted-foreground">Start by creating a new visit schedule for your salesmen.</p>
+              <Button asChild variant="outline" className="mt-4">
+                <Link href="/admin/visits/new">Create First Appointment</Link>
+              </Button>
+            </div>
           ) : (
             <Table>
-              <TableHeader className="bg-gray-50/50">
+              <TableHeader>
                 <TableRow>
-                  <TableHead>Visit Date</TableHead>
+                  <TableHead>Scheduled Date</TableHead>
                   <TableHead>Customer / Store</TableHead>
                   <TableHead>Sales Rep</TableHead>
-                  <TableHead>Discussed SKUs</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visits.map((v) => (
-                  <TableRow key={v.id} className="hover:bg-gray-50/50">
-                    <TableCell className="text-gray-500">
-                      {new Date(v.visit_date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
-                    </TableCell>
-                    <TableCell className="font-medium text-gray-900 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-[#005914]" />
-                      {v.customers?.store_name ?? "N/A"}
-                    </TableCell>
-                    <TableCell className="text-gray-500">{v.users?.full_name ?? "N/A"}</TableCell>
+                {appointments.map((appt: any) => (
+                  <TableRow key={appt.id}>
                     <TableCell>
-                      <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold w-fit">
-                        {v.store_visit_skus?.length ?? 0} SKUs
-                      </span>
+                      <div className="font-medium">{new Date(appt.scheduled_at).toLocaleDateString()}</div>
+                      <div className="text-xs text-muted-foreground">{new Date(appt.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium">{appt.customer_name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <User className="h-3 w-3 text-muted-foreground" />
+                        <span>{appt.salesman_name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{appt.appointment_type}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={appt.status === 'completed' ? 'success' : appt.status === 'pending' ? 'secondary' : 'outline'} className="capitalize">
+                        {appt.status}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" className="h-8" onClick={() => handleViewReport(v.id)}>
-                        View Report
-                      </Button>
+                      <Button variant="ghost" size="sm">Edit</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -102,54 +112,6 @@ export default function StoreVisitsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Report Dialog */}
-      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Visit Report</DialogTitle>
-          </DialogHeader>
-          {reportLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="w-6 h-6 animate-spin text-[#005914]" />
-            </div>
-          ) : report ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-gray-500">Store:</span> <span className="font-medium">{report.customers?.store_name}</span></div>
-                <div><span className="text-gray-500">Sales Rep:</span> <span className="font-medium">{report.users?.full_name}</span></div>
-                <div><span className="text-gray-500">Date:</span> <span className="font-medium">{new Date(report.visit_date).toLocaleString()}</span></div>
-              </div>
-              {report.notes && <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{report.notes}</p>}
-              {report.store_visit_skus.length > 0 ? (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Discussed SKUs</h4>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product Variant</TableHead>
-                        <TableHead>Notes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {report.store_visit_skus.map((sku) => (
-                        <TableRow key={sku.id}>
-                          <TableCell className="font-medium">{sku.product_variants?.name ?? "Unknown"}</TableCell>
-                          <TableCell className="text-gray-500">{sku.notes || "—"}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-400 text-center py-4">No SKUs discussed</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-gray-400 text-center py-4">Could not load report.</p>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

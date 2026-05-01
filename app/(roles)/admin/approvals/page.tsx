@@ -1,4 +1,4 @@
-import supabase from "@/lib/db";
+import { query } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import AdminApprovalClient from "./AdminApprovalClient";
@@ -26,17 +26,17 @@ export default async function AdminApprovalsPage() {
   // Fetch pending users
   let users: UserWithRole[] = [];
   try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id, full_name, email, phone_number, created_at, roles(name)")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
+    const rows = await query(
+      `SELECT u.id, u.full_name, u.email, u.phone_number, u.created_at, r.name as role_name
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.status = 'pending'
+       ORDER BY u.created_at DESC`
+    );
 
-    if (error) throw error;
-
-    users = (data || []).map((u: any) => ({
+    users = rows.map((u: any) => ({
       ...u,
-      role_name: u.roles?.name || "unknown",
+      role_name: u.role_name || "unknown",
     }));
   } catch (error: any) {
     return <div className="p-8 text-red-500">Error loading users: {error.message}</div>;

@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query } from "@/lib/db-helpers";
 
 export interface SalesTrendPoint { date: string; total: number; }
 export interface CategorySalesPoint { category: string; total: number; }
@@ -9,17 +9,17 @@ export async function getSalesTrends(): Promise<SalesTrendPoint[]> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const { data, error } = await supabase
-      .from("sales_transactions")
-      .select("total_amount, created_at")
-      .gte("created_at", thirtyDaysAgo.toISOString())
-      .order("created_at", { ascending: true });
+    const rows = await query(
+      `SELECT total_amount, created_at FROM sales_transactions
+       WHERE created_at >= ?
+       ORDER BY created_at ASC`,
+      [thirtyDaysAgo.toISOString()]
+    );
 
-    if (error) throw error;
-    if (!data || data.length === 0) return [];
+    if (!rows || rows.length === 0) return [];
 
     const grouped: Record<string, number> = {};
-    data.forEach((t: any) => {
+    rows.forEach((t: any) => {
       const date = new Date(t.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       grouped[date] = (grouped[date] || 0) + (Number(t.total_amount) || 0);
     });
@@ -33,16 +33,19 @@ export async function getSalesTrends(): Promise<SalesTrendPoint[]> {
 
 export async function getTopCategories(): Promise<CategorySalesPoint[]> {
   try {
-    const { data, error } = await supabase
-      .from("sales_transaction_items")
-      .select("subtotal, product_variants(products(product_categories(name)))");
+    const rows = await query(
+      `SELECT sti.subtotal, pc.name as category_name
+       FROM sales_transaction_items sti
+       LEFT JOIN product_variants pv ON sti.variant_id = pv.id
+       LEFT JOIN products p ON pv.product_id = p.id
+       LEFT JOIN product_categories pc ON p.category_id = pc.id`
+    );
 
-    if (error) throw error;
-    if (!data || data.length === 0) return [];
+    if (!rows || rows.length === 0) return [];
 
     const grouped: Record<string, number> = {};
-    data.forEach((item: any) => {
-      const catName = item.product_variants?.products?.product_categories?.name ?? "Uncategorized";
+    rows.forEach((item: any) => {
+      const catName = item.category_name ?? "Uncategorized";
       grouped[catName] = (grouped[catName] || 0) + (Number(item.subtotal) || 0);
     });
 

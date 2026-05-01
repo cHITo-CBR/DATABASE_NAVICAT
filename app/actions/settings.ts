@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne, execute } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 
 export interface SettingRow {
@@ -11,12 +11,7 @@ export interface SettingRow {
 
 export async function getSettings(): Promise<SettingRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("system_settings")
-      .select("*")
-      .order("key");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM system_settings ORDER BY `key`");
   } catch (error) {
     console.error("Error fetching settings:", error);
     return [];
@@ -25,23 +20,18 @@ export async function getSettings(): Promise<SettingRow[]> {
 
 export async function updateSetting(key: string, value: string) {
   try {
-    const { data: existing } = await supabase
-      .from("system_settings")
-      .select("id")
-      .eq("key", key)
-      .maybeSingle();
+    const existing = await queryOne("SELECT id FROM system_settings WHERE `key` = ?", [key]);
 
     if (existing) {
-      const { error } = await supabase
-        .from("system_settings")
-        .update({ value, updated_at: new Date().toISOString() })
-        .eq("key", key);
-      if (error) throw error;
+      await execute(
+        "UPDATE system_settings SET value = ?, updated_at = NOW() WHERE `key` = ?",
+        [value, key]
+      );
     } else {
-      const { error } = await supabase
-        .from("system_settings")
-        .insert({ key, value });
-      if (error) throw error;
+      await execute(
+        "INSERT INTO system_settings (`key`, value) VALUES (?, ?)",
+        [key, value]
+      );
     }
 
     revalidatePath("/settings");

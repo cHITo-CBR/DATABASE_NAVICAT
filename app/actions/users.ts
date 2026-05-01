@@ -1,6 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID, getTableColumns } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
@@ -18,33 +17,27 @@ export interface UserRow {
 
 export async function getUsers(search?: string, roleFilter?: string): Promise<UserRow[]> {
   try {
-    let query = supabase
-      .from("users")
-      .select("id, full_name, email, phone_number, status, is_active, created_at, roles(name)")
-      .order("created_at", { ascending: false });
+    let sql = `SELECT u.id, u.full_name, u.email, u.phone_number, u.status, u.is_active, u.created_at,
+               r.name as role_name
+               FROM users u
+               LEFT JOIN roles r ON u.role_id = r.id
+               WHERE 1=1`;
+    const params: any[] = [];
 
     if (roleFilter && roleFilter !== "all") {
-      const { data: role } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", roleFilter)
-        .maybeSingle();
-      if (role) {
-        query = query.eq("role_id", role.id);
-      }
+      sql += " AND r.name = ?";
+      params.push(roleFilter);
     }
 
     if (search && search.trim()) {
-      query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
+      sql += " AND (u.full_name LIKE ? OR u.email LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    sql += " ORDER BY u.created_at DESC";
 
-    return (data || []).map((user: any) => ({
-      ...user,
-      role_name: user.roles?.name || null,
-    }));
+    const rows = await query(sql, params);
+    return rows;
   } catch (error) {
     console.error("Error fetching users:", error);
     return [];
@@ -53,12 +46,7 @@ export async function getUsers(search?: string, roleFilter?: string): Promise<Us
 
 export async function getRoles(): Promise<{ id: number; name: string }[]> {
   try {
-    const { data, error } = await supabase
-      .from("roles")
-      .select("id, name")
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT id, name FROM roles ORDER BY name");
   } catch (error) {
     console.error("Error fetching roles:", error);
     return [];
@@ -85,21 +73,163 @@ export async function createUser(formData: FormData) {
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = generateUUID();
 
-    const { error } = await supabase.from("users").insert({
-      id: userId,
-      full_name: fullName,
-      email,
-      phone_number: phone || null,
-      password_hash: passwordHash,
-      role_id: parseInt(roleId),
-      status: "approved",
-      is_active: true,
-    });
+    await execute(
+      `INSERT INTO users (id, full_name, email, phone_number, password_hash, role_id, status, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, 'approved', 1)`,
+      [userId, fullName, email, phone || null, passwordHash, parseInt(roleId)]
+    );
 
-    if (error) throw error;
     revalidatePath("/users");
     return { success: true };
   } catch (error: any) {
     return { error: error.message || "Failed to create user." };
+  }
+}
+
+// ── STORE REGISTRATION MANAGEMENT ──────────────────────────────────────
+
+export interface PendingStoreRegistration {
+  user_id: string;
+  full_name: string;
+  email: string;
+  phone_number: string | null;
+  created_at: string;
+  store_name: string | null;
+  contact_person: string | null;
+  address: string | null;
+  city: string | null;
+  region: string | null;
+  customer_id: string | null;
+}
+
+/**
+ * Fetches all buyer accounts that are in "pending" status,
+ * joined with their linked customer (store) record.
+ */
+export async function getPendingStoreRegistrations(): Promise<PendingStoreRegistration[]> {
+  try {
+    const [userColumns, customerColumns] = await Promise.all([
+      getTableColumns("users"),
+      getTableColumns("customers"),
+    ]);
+
+    const userColumnSet = new Set(userColumns.map((col) => col.COLUMN_NAME));
+    const customerColumnSet = new Set(customerColumns.map((col) => col.COLUMN_NAME));
+
+    const joinClause = userColumnSet.has("linked_customer_id")
+      ? "LEFT JOIN customers c ON u.linked_customer_id = c.id"
+      : "LEFT JOIN customers c ON c.email = u.email";
+
+    const addressSelect = customerColumnSet.has("address") ? "c.address" : "NULL";
+    const citySelect = customerColumnSet.has("city") ? "c.city" : "NULL";
+    const regionSelect = customerColumnSet.has("region") ? "c.region" : "NULL";
+
+    const rows = await query(
+      `SELECT u.id as user_id, u.full_name, u.email, u.phone_number, u.created_at,
+              c.store_name, c.contact_person, ${addressSelect} as address,
+              ${citySelect} as city, ${regionSelect} as region, c.id as customer_id
+       FROM users u
+       ${joinClause}
+       WHERE u.role_id = 4 AND u.status = 'pending'
+       ORDER BY u.created_at DESC`
+    );
+    return rows;
+  } catch (error) {
+    console.error("Error fetching pending registrations:", error);
+    return [];
+  }
+}
+
+/**
+ * Approves a pending buyer registration.
+ * Sets the user's status to "approved" and is_active to 1.
+ */
+export async function approveStoreRegistration(userId: string) {
+  const session = await getSession();
+  if (!session || session.user.role !== "admin") {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    await execute(
+      `UPDATE users SET status = 'approved', is_active = 1, approved_by = ?, approved_at = NOW() WHERE id = ?`,
+      [session.user.id, userId]
+    );
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/approvals");
+    revalidatePath("/admin/buyer-requests");
+    return { success: true };
+  } catch (error: any) {
+    console.error("approveStoreRegistration error:", error);
+    return { error: error.message || "Failed to approve." };
+  }
+}
+
+/**
+ * Rejects a pending buyer registration.
+ * Sets the user's status to "rejected" with a reason.
+ */
+export async function rejectStoreRegistration(userId: string, reason?: string) {
+  const session = await getSession();
+  if (!session || session.user.role !== "admin") {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    await execute(
+      `UPDATE users SET status = 'rejected', is_active = 0, rejection_reason = ? WHERE id = ?`,
+      [reason || "Application denied by admin.", userId]
+    );
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/approvals");
+    revalidatePath("/admin/buyer-requests");
+    return { success: true };
+  } catch (error: any) {
+    console.error("rejectStoreRegistration error:", error);
+    return { error: error.message || "Failed to reject." };
+  }
+}
+
+/**
+ * Permanently deletes a pending store registration (customer + user).
+ * Only available to admins.
+ */
+export async function deleteStoreRegistration(userId: string) {
+  const session = await getSession();
+  if (!session || session.user.role !== "admin") {
+    return { error: "Unauthorized" };
+  }
+
+  try {
+    // Find the user and linked customer (if any)
+    const user = await queryOne<{ linked_customer_id: string | null; email: string }>(
+      "SELECT linked_customer_id, email FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (!user) {
+      return { error: "User not found." };
+    }
+
+    // Delete customer if linked
+    if (user.linked_customer_id) {
+      await execute("DELETE FROM customers WHERE id = ?", [user.linked_customer_id]);
+    } else {
+      // As a fallback, delete any customer with matching email
+      await execute("DELETE FROM customers WHERE email = ?", [user.email]);
+    }
+
+    // Delete the user record
+    await execute("DELETE FROM users WHERE id = ?", [userId]);
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/approvals");
+    revalidatePath("/admin/buyer-requests");
+    revalidatePath("/admin/registrations");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("deleteStoreRegistration error:", error);
+    return { error: error.message || "Failed to delete registration." };
   }
 }

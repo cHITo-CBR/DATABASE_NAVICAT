@@ -28,7 +28,7 @@ const roleDashboardMap: Record<string, string> = {
 };
 
 // Routes that don't require authentication
-const publicRoutes = ["/login", "/signup", "/auth"];
+const publicRoutes = ["/login", "/signup", "/auth", "/register"];
 
 async function getSessionRole(request: NextRequest) {
   const sessionCookie = request.cookies.get("session")?.value;
@@ -77,7 +77,8 @@ export async function proxy(request: NextRequest) {
         new URL(roleDashboardMap[role], request.url)
       );
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    // Not logged in — show the public landing page
+    return NextResponse.next();
   }
 
   // ── Stakeholder routes: enforce role match ──

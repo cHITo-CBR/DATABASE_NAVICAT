@@ -1,82 +1,83 @@
-"use client";
 
-import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Clock, Navigation, ChevronRight } from "lucide-react";
-import { getSalesmanVisits } from "@/app/actions/store-visits";
-import { getCurrentUser } from "@/app/actions/auth";
+import { getAppointments } from "@/app/actions/appointments";
+import { getSession } from "@/lib/session";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { MapPin, Clock, Phone, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
-export default function SalesmanVisitsPage() {
-  const [visits, setVisits] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+export default async function SalesmanVisitsPage() {
+  const session = await getSession();
+  const appointments = await getAppointments(session?.user.id);
 
-  useEffect(() => {
-    async function load() {
-      const session = await getCurrentUser();
-      const userId = session?.user?.id;
-      if (userId) {
-        const result = await getSalesmanVisits(userId);
-        setVisits(result.success ? result.data || [] : []);
-      }
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-cyan-400 animate-pulse" />
-          <p className="text-sm text-gray-400 font-medium">Loading visits...</p>
-        </div>
-      </div>
-    );
-  }
+  // Filter for today
+  const today = new Date().toDateString();
+  const todayVisits = appointments.filter((a: any) => new Date(a.scheduled_at).toDateString() === today);
+  const upcomingVisits = appointments.filter((a: any) => new Date(a.scheduled_at).toDateString() !== today && a.status === 'pending');
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      <div>
-        <h2 className="text-xl font-black text-gray-900 tracking-tight">Store Visits</h2>
-        <p className="text-xs text-gray-400 font-medium">{visits.length} visits recorded</p>
+    <div className="space-y-6 pb-20">
+      <div className="px-1">
+        <h1 className="text-2xl font-bold text-[#1E293B]">My Schedule</h1>
+        <p className="text-sm text-muted-foreground">Today's route and upcoming appointments.</p>
       </div>
 
-      {visits.length === 0 ? (
-        <div className="py-16 text-center">
-          <MapPin className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm font-medium">No visits recorded yet</p>
-          <p className="text-[10px] text-gray-300 mt-1">Visit a store from the Stores tab to start</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {visits.map((v) => (
-            <Card key={v.id} className="border-0 shadow-sm rounded-2xl ring-1 ring-gray-50 overflow-hidden hover:shadow-md transition-all duration-200 active:scale-[0.98]">
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-50 to-cyan-50 flex items-center justify-center flex-shrink-0 ring-1 ring-teal-100">
-                  <Navigation className="w-5 h-5 text-teal-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-bold text-gray-900 truncate">{v.customers?.store_name || "Unknown Store"}</h3>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <Clock className="w-3 h-3 text-gray-300" />
-                    <span className="text-[10px] text-gray-400 font-medium">
-                      {new Date(v.visit_date || v.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                    </span>
+      {/* Today's Section */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Today's Route</h2>
+        {todayVisits.length === 0 ? (
+          <Card className="bg-slate-50 border-dashed">
+            <CardContent className="py-10 text-center text-muted-foreground">
+              No visits scheduled for today.
+            </CardContent>
+          </Card>
+        ) : (
+          todayVisits.map((visit: any) => (
+            <Link key={visit.id} href={`/salesman/visits/${visit.id}`}>
+              <Card className="hover:border-primary/50 transition-colors mb-3">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
+                      <Clock className="h-5 w-5" />
+                      <span className="text-[10px] font-bold">
+                        {new Date(visit.scheduled_at).getHours()}:{new Date(visit.scheduled_at).getMinutes().toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900">{visit.customer_name}</h3>
+                      <div className="flex items-center text-xs text-muted-foreground mt-1">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        <span>View on Map</span>
+                      </div>
+                    </div>
                   </div>
-                  {v.notes && (
-                    <p className="text-[10px] text-gray-400 mt-1 truncate italic">"{v.notes}"</p>
-                  )}
+                  <ChevronRight className="h-5 w-5 text-slate-300" />
+                </CardContent>
+              </Card>
+            </Link>
+          ))
+        )}
+      </section>
+
+      {/* Upcoming Section */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Upcoming</h2>
+        {upcomingVisits.map((visit: any) => (
+          <div key={visit.id} className="flex items-start gap-4 p-3 rounded-lg border bg-white shadow-sm">
+             <div className="min-w-[60px] text-center">
+                <div className="text-xs font-bold text-primary">{new Date(visit.scheduled_at).toLocaleString('default', { month: 'short' })}</div>
+                <div className="text-xl font-bold">{new Date(visit.scheduled_at).getDate()}</div>
+             </div>
+             <div className="flex-1">
+                <h4 className="font-semibold text-sm">{visit.customer_name}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                   <Badge variant="outline" className="text-[10px] py-0">{visit.appointment_type}</Badge>
+                   <span className="text-xs text-muted-foreground">{visit.status}</span>
                 </div>
-                {v.latitude && v.longitude && (
-                  <div className="flex items-center gap-1 text-[10px] text-teal-600 font-bold bg-teal-50 px-2 py-1 rounded-full flex-shrink-0">
-                    <MapPin className="w-3 h-3" /> GPS
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+             </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

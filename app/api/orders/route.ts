@@ -1,31 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import supabase from "@/lib/db";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 
 export async function GET(request: NextRequest) {
   try {
-    const { data: orders, error } = await supabase
-      .from("sales_transactions")
-      .select("id, status, total_amount, notes, created_at")
-      .order("created_at", { ascending: false });
+    const orders = await query(
+      "SELECT id, status, total_amount, notes, created_at FROM sales_transactions ORDER BY created_at DESC"
+    );
 
-    if (error) throw error;
-
-    const orderIds = (orders || []).map((o: any) => o.id);
-    let itemsMap = new Map<number, any[]>();
+    const orderIds = orders.map((o: any) => o.id);
+    let itemsMap = new Map<string, any[]>();
 
     if (orderIds.length > 0) {
-      const { data: items } = await supabase
-        .from("sales_transaction_items")
-        .select("transaction_id, variant_id, quantity, unit_price, subtotal")
-        .in("transaction_id", orderIds);
+      const placeholders = orderIds.map(() => '?').join(',');
+      const items = await query(
+        `SELECT transaction_id, variant_id, quantity, unit_price, subtotal
+         FROM sales_transaction_items
+         WHERE transaction_id IN (${placeholders})`,
+        orderIds
+      );
 
-      for (const item of (items || [])) {
+      for (const item of items) {
         if (!itemsMap.has(item.transaction_id)) itemsMap.set(item.transaction_id, []);
         itemsMap.get(item.transaction_id)!.push(item);
       }
     }
 
-    const mapped = (orders || []).map((o: any) => {
+    const mapped = orders.map((o: any) => {
       const txItems = itemsMap.get(o.id) || [];
       return {
         ...o,
@@ -62,38 +62,32 @@ export async function POST(request: NextRequest) {
     const totalAmount = orderItems.reduce((acc: number, item: any) => acc + (item.quantity * item.price), 0);
 
     let finalSalesmanId = user_id;
-    const { data: validUser } = await supabase.from('users').select('id').eq('id', user_id).maybeSingle();
+    const validUser = await queryOne("SELECT id FROM users WHERE id = ?", [user_id]);
     if (!validUser) {
-       const { data: firstUser } = await supabase.from('users').select('id').limit(1).maybeSingle();
+       const firstUser = await queryOne("SELECT id FROM users LIMIT 1");
        if (firstUser) finalSalesmanId = firstUser.id;
     }
 
-    // Insert into sales_transactions
-    const { data: transaction, error: transactionError } = await supabase
-      .from("sales_transactions")
-      .insert({
-        salesman_id: finalSalesmanId,
-        status: "for_approval",
-        total_amount: totalAmount,
-      })
-      .select()
-      .single();
+    const transactionId = generateUUID();
 
-    if (transactionError) throw transactionError;
+    // Insert into sales_transactions
+    await execute(
+      `INSERT INTO sales_transactions (id, salesman_id, status, total_amount)
+       VALUES (?, ?, 'for_approval', ?)`,
+      [transactionId, finalSalesmanId, totalAmount]
+    );
 
     // Insert items
-    const mappedItemsToInsert = orderItems.map((item: any) => ({
-      transaction_id: transaction.id,
-      variant_id: item.variant_id || item.product_id, 
-      quantity: item.quantity,
-      unit_price: item.price,
-      subtotal: item.quantity * item.price,
-    }));
+    for (const item of orderItems) {
+      await execute(
+        `INSERT INTO sales_transaction_items (id, transaction_id, variant_id, quantity, unit_price, subtotal)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [generateUUID(), transactionId, item.variant_id || item.product_id,
+         item.quantity, item.price, item.quantity * item.price]
+      );
+    }
 
-    const { error: itemsError } = await supabase.from("sales_transaction_items").insert(mappedItemsToInsert);
-    if (itemsError) throw itemsError;
-
-    return NextResponse.json({ success: true, order: transaction });
+    return NextResponse.json({ success: true, order: { id: transactionId } });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

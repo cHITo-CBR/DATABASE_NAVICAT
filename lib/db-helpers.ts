@@ -1,89 +1,85 @@
-import supabase from "./db";
+import pool from "./db";
+import type { RowDataPacket, ResultSetHeader } from "mysql2";
 
 /**
  * DATABASE HELPERS
- * This file provides utility functions for common database operations,
- * identifier generation, and compatibility layers between the old MySQL logic 
- * and the new Supabase (PostgreSQL) implementation.
+ * This file provides utility functions for common database operations.
+ * All server actions use these helpers instead of raw pool access.
  */
 
 /**
  * Generates a unique identifier (UUID v4) for new database records.
- * Uses the built-in web crypto API for cryptographically strong random IDs.
- * @returns A string like '550e8400-e29b-41d4-a716-446655440000'
  */
 export function generateUUID(): string {
   return crypto.randomUUID();
 }
 
 /**
+ * Execute a SQL query and return the rows as typed array.
+ * Uses parameterized queries to prevent SQL injection.
+ */
+export async function query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  const [rows] = await pool.execute<RowDataPacket[]>(sql, params);
+  return rows as T[];
+}
+
+/**
+ * Execute a SQL query and return the first row, or null if no results.
+ */
+export async function queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
+  const rows = await query<T>(sql, params);
+  return rows[0] || null;
+}
+
+/**
+ * Execute an INSERT/UPDATE/DELETE and return the result metadata.
+ */
+export async function execute(sql: string, params: any[] = []): Promise<ResultSetHeader> {
+  const [result] = await pool.execute<ResultSetHeader>(sql, params);
+  return result;
+}
+
+export interface TableColumn {
+  COLUMN_NAME: string;
+  DATA_TYPE: string;
+  EXTRA: string | null;
+}
+
+export async function getTableColumns(tableName: string): Promise<TableColumn[]> {
+  return query<TableColumn>(
+    `SELECT COLUMN_NAME, DATA_TYPE, EXTRA
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [tableName]
+  );
+}
+
+/**
+ * Get a single count value from a COUNT(*) query.
+ */
+export async function queryCount(sql: string, params: any[] = []): Promise<number> {
+  const row = await queryOne<{ count: number }>(sql, params);
+  return row?.count ?? 0;
+}
+
+/**
  * UTILITY: Boolean Converters
- * These help interpret truthy/falsy values from various inputs.
- * Since PostgreSQL handles native booleans, these are mostly for data cleaning.
+ * MySQL uses TINYINT(1) for booleans.
  */
 export function toBoolean(value: any): boolean {
   return value === true || value === 1 || value === "true";
 }
 
-export function fromBoolean(value: boolean): boolean {
-  return value; // Direct return as Supabase/Postgres uses native boolean
+export function fromBoolean(value: boolean): number {
+  return value ? 1 : 0;
 }
 
 /**
- * EXPORT DATABASE CLIENT
- * Re-exports the initialized Supabase client so it can be imported 
- * from db-helpers for convenience in server actions.
+ * Prepares a search term for use with MySQL LIKE (case-insensitive by default collation).
  */
-export { supabase };
-
-// ──────────────────────────────────────────────────────────────
-// SEARCH HELPERS
-// Utility functions to facilitate case-insensitive searching in PostgreSQL.
-// ──────────────────────────────────────────────────────────────
-
-/**
- * Prepares a search term for use with PostgreSQL's 'ilike' (case-insensitive search).
- * It escapes special characters like '%' and '_' to prevent search injections.
- * @param column - The database column name
- * @param searchTerm - The user-provided search string
- * @returns An escaped search pattern like '%search_term%'
- */
-export function buildIlikeSearch(column: string, searchTerm: string): string {
-  const escaped = searchTerm.replace(/[%_\\]/g, "\\$&"); // Escape %, _ and \
+export function buildLikeSearch(searchTerm: string): string {
+  const escaped = searchTerm.replace(/[%_\\]/g, "\\$&");
   return `%${escaped}%`;
 }
 
-/**
- * Escapes special characters in a string for use in a 'LIKE' comparison.
- */
-export function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, "\\$&");
-}
-
-/**
- * Legacy SEARCH Builder
- * Included for transition compatibility with older parts of the system.
- */
-export function buildLikeSearch(column: string, searchTerm: string): {
-  condition: string;
-  value: string;
-} {
-  const escaped = escapeLike(searchTerm);
-  return {
-    condition: `${column} ILIKE $1`, // ILIKE is Postgres-specific for case-insensitive
-    value: `%${escaped}%`,
-  };
-}
-
-/**
- * DEPRECATED: Raw SQL Execution
- * Direct SQL queries are discouraged in Supabase; use the object-oriented 
- * .from('table').select() API instead for better type safety and security.
- */
-export async function rawQuery<T = any>(
-  sql: string,
-  params: any[] = []
-): Promise<T[]> {
-  throw new Error("rawQuery is deprecated. Use supabase.from() methods instead.");
-}
-
+export { pool };

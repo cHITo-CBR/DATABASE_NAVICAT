@@ -2,21 +2,13 @@
 
 /**
  * CATALOG CONFIGURATION ACTIONS
- * This file handles the organizational data for the inventory system:
- * 1. Categories (e.g., Canned Goods, Condiments)
- * 2. Brands (e.g., Century Tuna, 555)
- * 3. Units (e.g., Piece, Pack, Bundle)
- * 4. Packaging Types (e.g., Tin Can, Pouch)
+ * Handles Categories, Brands, Units, and Packaging Types CRUD.
  */
 
-import supabase from "@/lib/db";
+import { query, execute } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 
 // ── CATEGORIES MANAGEMENT ──────────────────────────────────────────────
-/**
- * CRUD operations for product categories.
- * Allows organizing products into high-level groups.
- */
 export interface CategoryRow {
   id: number;
   name: string;
@@ -27,13 +19,7 @@ export interface CategoryRow {
 
 export async function getCategories(): Promise<CategoryRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("product_categories")
-      .select("*")
-      .eq("is_archived", false)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM product_categories WHERE is_archived = 0 ORDER BY name");
   } catch (error) {
     console.error("Error fetching categories:", error);
     return [];
@@ -42,13 +28,7 @@ export async function getCategories(): Promise<CategoryRow[]> {
 
 export async function getArchivedCategories(): Promise<CategoryRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("product_categories")
-      .select("*")
-      .eq("is_archived", true)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM product_categories WHERE is_archived = 1 ORDER BY name");
   } catch (error) {
     console.error("Error fetching archived categories:", error);
     return [];
@@ -61,11 +41,7 @@ export async function createCategory(formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase.from("product_categories").insert({
-      name,
-      description: description || null,
-    });
-    if (error) throw error;
+    await execute("INSERT INTO product_categories (name, description) VALUES (?, ?)", [name, description || null]);
     revalidatePath("/catalog/categories");
     return { success: true };
   } catch (error: any) {
@@ -79,11 +55,7 @@ export async function updateCategory(id: number, formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase
-      .from("product_categories")
-      .update({ name, description: description || null })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE product_categories SET name = ?, description = ? WHERE id = ?", [name, description || null, id]);
     revalidatePath("/catalog/categories");
     return { success: true };
   } catch (error: any) {
@@ -93,11 +65,7 @@ export async function updateCategory(id: number, formData: FormData) {
 
 export async function archiveCategory(id: number) {
   try {
-    const { error } = await supabase
-      .from("product_categories")
-      .update({ is_archived: true })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE product_categories SET is_archived = 1 WHERE id = ?", [id]);
     revalidatePath("/catalog/categories");
     return { success: true };
   } catch (error: any) {
@@ -107,11 +75,7 @@ export async function archiveCategory(id: number) {
 
 export async function restoreCategory(id: number) {
   try {
-    const { error } = await supabase
-      .from("product_categories")
-      .update({ is_archived: false })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE product_categories SET is_archived = 0 WHERE id = ?", [id]);
     revalidatePath("/admin/catalog/categories");
     revalidatePath("/catalog/categories");
     revalidatePath("/admin/archives");
@@ -124,11 +88,7 @@ export async function restoreCategory(id: number) {
 
 export async function deleteCategory(id: number) {
   try {
-    const { error } = await supabase
-      .from("product_categories")
-      .delete()
-      .eq("id", id);
-    if (error) throw error;
+    await execute("DELETE FROM product_categories WHERE id = ?", [id]);
     revalidatePath("/catalog/categories");
     return { success: true };
   } catch (error: any) {
@@ -137,10 +97,6 @@ export async function deleteCategory(id: number) {
 }
 
 // ── BRANDS MANAGEMENT ──────────────────────────────────────────────────
-/**
- * CRUD operations for brands.
- * Allows filtering products by their manufacturer/brand name.
- */
 export interface BrandRow {
   id: number;
   name: string;
@@ -151,13 +107,7 @@ export interface BrandRow {
 
 export async function getBrands(): Promise<BrandRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("brands")
-      .select("*")
-      .eq("is_archived", false)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM brands WHERE is_archived = 0 ORDER BY name");
   } catch (error) {
     console.error("Error fetching brands:", error);
     return [];
@@ -166,13 +116,7 @@ export async function getBrands(): Promise<BrandRow[]> {
 
 export async function getArchivedBrands(): Promise<BrandRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("brands")
-      .select("*")
-      .eq("is_archived", true)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM brands WHERE is_archived = 1 ORDER BY name");
   } catch (error) {
     console.error("Error fetching archived brands:", error);
     return [];
@@ -185,11 +129,7 @@ export async function createBrand(formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase.from("brands").insert({
-      name,
-      description: description || null,
-    });
-    if (error) throw error;
+    await execute("INSERT INTO brands (name, description) VALUES (?, ?)", [name, description || null]);
     revalidatePath("/catalog/brands");
     return { success: true };
   } catch (error: any) {
@@ -203,11 +143,7 @@ export async function updateBrand(id: number, formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase
-      .from("brands")
-      .update({ name, description: description || null })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE brands SET name = ?, description = ? WHERE id = ?", [name, description || null, id]);
     revalidatePath("/catalog/brands");
     return { success: true };
   } catch (error: any) {
@@ -217,11 +153,7 @@ export async function updateBrand(id: number, formData: FormData) {
 
 export async function archiveBrand(id: number) {
   try {
-    const { error } = await supabase
-      .from("brands")
-      .update({ is_archived: true })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE brands SET is_archived = 1 WHERE id = ?", [id]);
     revalidatePath("/catalog/brands");
     return { success: true };
   } catch (error: any) {
@@ -231,11 +163,7 @@ export async function archiveBrand(id: number) {
 
 export async function restoreBrand(id: number) {
   try {
-    const { error } = await supabase
-      .from("brands")
-      .update({ is_archived: false })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE brands SET is_archived = 0 WHERE id = ?", [id]);
     revalidatePath("/admin/catalog/brands");
     revalidatePath("/catalog/brands");
     revalidatePath("/admin/archives");
@@ -248,8 +176,7 @@ export async function restoreBrand(id: number) {
 
 export async function deleteBrand(id: number) {
   try {
-    const { error } = await supabase.from("brands").delete().eq("id", id);
-    if (error) throw error;
+    await execute("DELETE FROM brands WHERE id = ?", [id]);
     revalidatePath("/catalog/brands");
     return { success: true };
   } catch (error: any) {
@@ -258,9 +185,6 @@ export async function deleteBrand(id: number) {
 }
 
 // ── UNITS MANAGEMENT ──────────────────────────────────────────────────
-/**
- * CRUD operations for measurement units.
- */
 export interface UnitRow {
   id: number;
   name: string;
@@ -271,13 +195,7 @@ export interface UnitRow {
 
 export async function getUnits(): Promise<UnitRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("units")
-      .select("*")
-      .eq("is_archived", false)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM units WHERE is_archived = 0 ORDER BY name");
   } catch (error) {
     console.error("Error fetching units:", error);
     return [];
@@ -286,13 +204,7 @@ export async function getUnits(): Promise<UnitRow[]> {
 
 export async function getArchivedUnits(): Promise<UnitRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("units")
-      .select("*")
-      .eq("is_archived", true)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM units WHERE is_archived = 1 ORDER BY name");
   } catch (error) {
     console.error("Error fetching archived units:", error);
     return [];
@@ -305,11 +217,7 @@ export async function createUnit(formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase.from("units").insert({
-      name,
-      abbreviation: abbreviation || null,
-    });
-    if (error) throw error;
+    await execute("INSERT INTO units (name, abbreviation) VALUES (?, ?)", [name, abbreviation || null]);
     revalidatePath("/catalog/units");
     return { success: true };
   } catch (error: any) {
@@ -323,11 +231,7 @@ export async function updateUnit(id: number, formData: FormData) {
   if (!name) return { error: "Name is required." };
 
   try {
-    const { error } = await supabase
-      .from("units")
-      .update({ name, abbreviation: abbreviation || null })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE units SET name = ?, abbreviation = ? WHERE id = ?", [name, abbreviation || null, id]);
     revalidatePath("/catalog/units");
     return { success: true };
   } catch (error: any) {
@@ -337,11 +241,7 @@ export async function updateUnit(id: number, formData: FormData) {
 
 export async function archiveUnit(id: number) {
   try {
-    const { error } = await supabase
-      .from("units")
-      .update({ is_archived: true })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE units SET is_archived = 1 WHERE id = ?", [id]);
     revalidatePath("/catalog/units");
     return { success: true };
   } catch (error: any) {
@@ -351,11 +251,7 @@ export async function archiveUnit(id: number) {
 
 export async function restoreUnit(id: number) {
   try {
-    const { error } = await supabase
-      .from("units")
-      .update({ is_archived: false })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE units SET is_archived = 0 WHERE id = ?", [id]);
     revalidatePath("/admin/catalog/units");
     revalidatePath("/catalog/units");
     revalidatePath("/admin/archives");
@@ -368,8 +264,7 @@ export async function restoreUnit(id: number) {
 
 export async function deleteUnit(id: number) {
   try {
-    const { error } = await supabase.from("units").delete().eq("id", id);
-    if (error) throw error;
+    await execute("DELETE FROM units WHERE id = ?", [id]);
     revalidatePath("/catalog/units");
     return { success: true };
   } catch (error: any) {
@@ -378,9 +273,6 @@ export async function deleteUnit(id: number) {
 }
 
 // ── PACKAGING TYPES MANAGEMENT ────────────────────────────────────────
-/**
- * CRUD operations for product packaging configurations.
- */
 export interface PackagingRow {
   id: number;
   name: string;
@@ -391,13 +283,7 @@ export interface PackagingRow {
 
 export async function getPackagingTypes(): Promise<PackagingRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("packaging_types")
-      .select("*")
-      .eq("is_archived", false)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM packaging_types WHERE is_archived = 0 ORDER BY name");
   } catch (error) {
     console.error("Error fetching packaging types:", error);
     return [];
@@ -406,13 +292,7 @@ export async function getPackagingTypes(): Promise<PackagingRow[]> {
 
 export async function getArchivedPackagingTypes(): Promise<PackagingRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("packaging_types")
-      .select("*")
-      .eq("is_archived", true)
-      .order("name");
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT * FROM packaging_types WHERE is_archived = 1 ORDER BY name");
   } catch (error) {
     console.error("Error fetching archived packaging types:", error);
     return [];
@@ -426,7 +306,6 @@ export async function createPackagingType(formData: FormData) {
 
   let name = packaging;
   let description = null;
-  // Parse 'Name - Description' format if present
   if (packaging.includes(" - ")) {
     const parts = packaging.split(" - ");
     name = parts[0].trim();
@@ -434,12 +313,10 @@ export async function createPackagingType(formData: FormData) {
   }
 
   try {
-    const { error } = await supabase.from("packaging_types").insert({
-      name,
-      description,
-      items_per_case: itemsPerCase ? parseInt(itemsPerCase) : 1,
-    });
-    if (error) throw error;
+    await execute(
+      "INSERT INTO packaging_types (name, description, items_per_case) VALUES (?, ?, ?)",
+      [name, description, itemsPerCase ? parseInt(itemsPerCase) : 1]
+    );
     revalidatePath("/catalog/packaging");
     return { success: true };
   } catch (error: any) {
@@ -461,15 +338,10 @@ export async function updatePackagingType(id: number, formData: FormData) {
   }
 
   try {
-    const { error } = await supabase
-      .from("packaging_types")
-      .update({
-        name,
-        description,
-        items_per_case: itemsPerCase ? parseInt(itemsPerCase) : 1,
-      })
-      .eq("id", id);
-    if (error) throw error;
+    await execute(
+      "UPDATE packaging_types SET name = ?, description = ?, items_per_case = ? WHERE id = ?",
+      [name, description, itemsPerCase ? parseInt(itemsPerCase) : 1, id]
+    );
     revalidatePath("/catalog/packaging");
     return { success: true };
   } catch (error: any) {
@@ -479,11 +351,7 @@ export async function updatePackagingType(id: number, formData: FormData) {
 
 export async function archivePackagingType(id: number) {
   try {
-    const { error } = await supabase
-      .from("packaging_types")
-      .update({ is_archived: true })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE packaging_types SET is_archived = 1 WHERE id = ?", [id]);
     revalidatePath("/catalog/packaging");
     return { success: true };
   } catch (error: any) {
@@ -493,11 +361,7 @@ export async function archivePackagingType(id: number) {
 
 export async function restorePackagingType(id: number) {
   try {
-    const { error } = await supabase
-      .from("packaging_types")
-      .update({ is_archived: false })
-      .eq("id", id);
-    if (error) throw error;
+    await execute("UPDATE packaging_types SET is_archived = 0 WHERE id = ?", [id]);
     revalidatePath("/admin/catalog/packaging");
     revalidatePath("/catalog/packaging");
     revalidatePath("/admin/archives");
@@ -510,12 +374,10 @@ export async function restorePackagingType(id: number) {
 
 export async function deletePackagingType(id: number) {
   try {
-    const { error } = await supabase.from("packaging_types").delete().eq("id", id);
-    if (error) throw error;
+    await execute("DELETE FROM packaging_types WHERE id = ?", [id]);
     revalidatePath("/catalog/packaging");
     return { success: true };
   } catch (error: any) {
     return { error: error.message || "Failed to delete packaging type." };
   }
 }
-

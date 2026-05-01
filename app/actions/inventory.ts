@@ -1,6 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 
@@ -22,19 +21,16 @@ export interface MovementRow {
 
 export async function getInventoryKPIs(): Promise<InventoryKPIs> {
   try {
-    const { count: totalSKUs } = await supabase
-      .from("product_variants")
-      .select("*", { count: "exact", head: true })
-      .eq("is_active", true);
-
-    const { count: lowStockAlerts } = await supabase
-      .from("inventory_ledger")
-      .select("*", { count: "exact", head: true })
-      .lt("balance", 10);
+    const skuRow = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM product_variants WHERE is_active = 1"
+    );
+    const lowRow = await queryOne<{ count: number }>(
+      "SELECT COUNT(*) as count FROM inventory_ledger WHERE balance < 10"
+    );
 
     return {
-      totalSKUs: totalSKUs ?? 0,
-      lowStockAlerts: lowStockAlerts ?? 0,
+      totalSKUs: skuRow?.count ?? 0,
+      lowStockAlerts: lowRow?.count ?? 0,
     };
   } catch {
     return { totalSKUs: 0, lowStockAlerts: 0 };
@@ -43,28 +39,28 @@ export async function getInventoryKPIs(): Promise<InventoryKPIs> {
 
 export async function getRecentMovements(): Promise<MovementRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("inventory_ledger")
-      .select(`
-        id, quantity, balance, notes, created_at,
-        products:product_id(name, id),
-        inventory_movement_types:movement_type_id(name, direction),
-        users:recorded_by(full_name)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(20);
+    const rows = await query(
+      `SELECT il.id, il.quantity, il.balance, il.notes, il.created_at,
+              p.name as product_name, p.id as product_id,
+              imt.name as movement_type_name, imt.direction as movement_type_direction,
+              u.full_name as user_name
+       FROM inventory_ledger il
+       LEFT JOIN products p ON il.product_id = p.id
+       LEFT JOIN inventory_movement_types imt ON il.movement_type_id = imt.id
+       LEFT JOIN users u ON il.recorded_by = u.id
+       ORDER BY il.created_at DESC
+       LIMIT 20`
+    );
 
-    if (error) throw error;
-
-    return (data || []).map((row: any) => ({
+    return rows.map((row: any) => ({
       id: row.id,
       quantity: row.quantity,
       balance: row.balance,
       notes: row.notes,
       created_at: row.created_at,
-      product_variants: row.products ? { name: row.products.name, sku: `SKU-${row.products.id?.substring(0, 8)}` } : null,
-      inventory_movement_types: row.inventory_movement_types || null,
-      users: row.users || null,
+      product_variants: row.product_name ? { name: row.product_name, sku: `SKU-${row.product_id?.substring(0, 8)}` } : null,
+      inventory_movement_types: row.movement_type_name ? { name: row.movement_type_name, direction: row.movement_type_direction } : null,
+      users: row.user_name ? { full_name: row.user_name } : null,
     }));
   } catch (error) {
     console.error("Error fetching recent movements:", error);
@@ -74,14 +70,7 @@ export async function getRecentMovements(): Promise<MovementRow[]> {
 
 export async function getMovementTypes(): Promise<{ id: number; name: string; direction: string }[]> {
   try {
-    const { data, error } = await supabase
-      .from("inventory_movement_types")
-      .select("id, name, direction")
-      .eq("is_active", true)
-      .order("name");
-
-    if (error) throw error;
-    return data || [];
+    return await query("SELECT id, name, direction FROM inventory_movement_types WHERE is_active = 1 ORDER BY name");
   } catch (error) {
     console.error("Error fetching movement types:", error);
     return [
@@ -95,15 +84,9 @@ export async function getMovementTypes(): Promise<{ id: number; name: string; di
 
 export async function getVariantsForAdjustment(): Promise<{ id: string; name: string; sku: string | null }[]> {
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, name")
-      .eq("is_archived", false)
-      .order("name");
+    const rows = await query("SELECT id, name FROM products WHERE is_archived = 0 ORDER BY name");
 
-    if (error) throw error;
-
-    return (data || []).map((v: any) => ({
+    return rows.map((v: any) => ({
       id: v.id,
       name: `${v.name} - Standard`,
       sku: `SKU-${v.id.substring(0, 8)}`,
@@ -129,39 +112,28 @@ export async function createStockAdjustment(formData: FormData) {
 
   try {
     // Get current balance
-    const { data: lastEntry } = await supabase
-      .from("inventory_ledger")
-      .select("balance")
-      .eq("product_id", variantId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
+    const lastEntry = await queryOne<{ balance: number }>(
+      `SELECT balance FROM inventory_ledger WHERE product_id = ? ORDER BY created_at DESC LIMIT 1`,
+      [variantId]
+    );
     const currentBalance = lastEntry?.balance ?? 0;
 
     // Get movement type direction
-    const { data: movType } = await supabase
-      .from("inventory_movement_types")
-      .select("direction")
-      .eq("id", parseInt(movementTypeId))
-      .maybeSingle();
-
+    const movType = await queryOne<{ direction: string }>(
+      "SELECT direction FROM inventory_movement_types WHERE id = ?",
+      [parseInt(movementTypeId)]
+    );
     if (!movType) return { error: "Invalid movement type selected." };
 
     const direction = movType.direction;
     const newBalance = direction === "out" ? currentBalance - quantity : currentBalance + quantity;
 
-    const { error } = await supabase.from("inventory_ledger").insert({
-      id: generateUUID(),
-      product_id: variantId,
-      movement_type_id: parseInt(movementTypeId),
-      quantity: direction === "out" ? -quantity : quantity,
-      balance: newBalance,
-      notes: notes || null,
-      recorded_by: session.user.id,
-    });
-
-    if (error) throw error;
+    await execute(
+      `INSERT INTO inventory_ledger (id, product_id, movement_type_id, quantity, balance, notes, recorded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [generateUUID(), variantId, parseInt(movementTypeId),
+       direction === "out" ? -quantity : quantity, newBalance, notes || null, session.user.id]
+    );
 
     revalidatePath("/admin/inventory");
     revalidatePath("/supervisor/inventory");

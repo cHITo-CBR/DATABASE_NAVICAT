@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 
@@ -17,14 +17,14 @@ export async function getNotifications(): Promise<NotificationRow[]> {
     const session = await getSession();
     if (!session) return [];
 
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, title, message, type, is_read, created_at")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    return data || [];
+    const rows = await query(
+      `SELECT id, title, message, type, is_read, created_at
+       FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC`,
+      [session.user.id]
+    );
+    return rows;
   } catch (error) {
     console.error("Error fetching notifications:", error);
     return [];
@@ -36,13 +36,11 @@ export async function getUnreadCount(): Promise<number> {
     const session = await getSession();
     if (!session) return 0;
 
-    const { count } = await supabase
-      .from("notifications")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", session.user.id)
-      .eq("is_read", false);
-
-    return count ?? 0;
+    const row = await queryOne<{ count: number }>(
+      `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0`,
+      [session.user.id]
+    );
+    return row?.count ?? 0;
   } catch (error) {
     console.error("Error fetching unread count:", error);
     return 0;
@@ -51,12 +49,7 @@ export async function getUnreadCount(): Promise<number> {
 
 export async function markNotificationRead(id: string) {
   try {
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("id", id);
-
-    if (error) throw error;
+    await execute("UPDATE notifications SET is_read = 1 WHERE id = ?", [id]);
     revalidatePath("/notifications");
     return { success: true };
   } catch (error: any) {
@@ -69,13 +62,10 @@ export async function markAllRead() {
   if (!session) return { error: "Unauthorized" };
 
   try {
-    const { error } = await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", session.user.id)
-      .eq("is_read", false);
-
-    if (error) throw error;
+    await execute(
+      "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+      [session.user.id]
+    );
     revalidatePath("/notifications");
     return { success: true };
   } catch (error: any) {
@@ -93,14 +83,11 @@ export async function createNotification(
   type: string = "info"
 ) {
   try {
-    const { error } = await supabase.from("notifications").insert({
-      user_id: userId,
-      title,
-      message,
-      type,
-      is_read: false,
-    });
-    if (error) console.error("Error creating notification:", error);
+    await execute(
+      `INSERT INTO notifications (id, user_id, title, message, type, is_read)
+       VALUES (?, ?, ?, ?, ?, 0)`,
+      [generateUUID(), userId, title, message, type]
+    );
   } catch (error) {
     console.error("Error creating notification exception:", error);
   }
@@ -116,36 +103,32 @@ export async function notifyRole(
   type: string = "info"
 ) {
   try {
-    // 1. Fetch the role ID
-    const { data: role } = await supabase
-      .from("roles")
-      .select("id")
-      .eq("name", roleName)
-      .single();
-
-    if (!role) return;
-
-    // 2. Fetch all active users with this role
-    const { data: users } = await supabase
-      .from("users")
-      .select("id")
-      .eq("role_id", role.id)
-      .eq("is_active", true);
+    // Fetch all active users with this role
+    const users = await query<{ id: string }>(
+      `SELECT u.id FROM users u
+       JOIN roles r ON u.role_id = r.id
+       WHERE r.name = ? AND u.is_active = 1`,
+      [roleName]
+    );
 
     if (!users || users.length === 0) return;
 
-    // 3. Batch insert notifications for those users
-    const payload = users.map((u) => ({
-      user_id: u.id,
-      title,
-      message,
-      type,
-      is_read: false,
-    }));
+    // Batch insert notifications
+    const values = users.map(u => `('${generateUUID()}', '${u.id}', ?, ?, ?, 0)`).join(", ");
+    const params: any[] = [];
+    users.forEach(() => {
+      params.push(title, message, type);
+    });
 
-    await supabase.from("notifications").insert(payload);
+    // Use individual inserts for safety with parameterized queries
+    for (const u of users) {
+      await execute(
+        `INSERT INTO notifications (id, user_id, title, message, type, is_read)
+         VALUES (?, ?, ?, ?, ?, 0)`,
+        [generateUUID(), u.id, title, message, type]
+      );
+    }
   } catch (error) {
     console.error(`Error notifying role ${roleName}:`, error);
   }
 }
-

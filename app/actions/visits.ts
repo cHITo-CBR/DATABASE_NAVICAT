@@ -1,5 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
+import { query, queryOne } from "@/lib/db-helpers";
 
 export interface StoreVisitRow {
   id: string;
@@ -28,35 +28,38 @@ export interface VisitReportDetail {
 
 export async function getStoreVisits(): Promise<StoreVisitRow[]> {
   try {
-    const { data: visits, error } = await supabase
-      .from("store_visits")
-      .select("id, visit_date, notes, created_at, customers(store_name), users:salesman_id(full_name)")
-      .order("visit_date", { ascending: false });
+    const visits = await query(
+      `SELECT sv.id, sv.visit_date, sv.notes, sv.created_at,
+              c.store_name as customer_name, u.full_name as salesman_name
+       FROM store_visits sv
+       LEFT JOIN customers c ON sv.customer_id = c.id
+       LEFT JOIN users u ON sv.salesman_id = u.id
+       ORDER BY sv.visit_date DESC`
+    );
 
-    if (error) throw error;
-
-    const visitIds = (visits || []).map((v: any) => v.id);
+    const visitIds = visits.map((v: any) => v.id);
     let skusMap = new Map<string, { id: string }[]>();
 
     if (visitIds.length > 0) {
-      const { data: skus } = await supabase
-        .from("store_visit_skus")
-        .select("id, visit_id")
-        .in("visit_id", visitIds);
+      const placeholders = visitIds.map(() => '?').join(',');
+      const skus = await query(
+        `SELECT id, visit_id FROM store_visit_skus WHERE visit_id IN (${placeholders})`,
+        visitIds
+      );
 
-      for (const sku of (skus || [])) {
+      for (const sku of skus) {
         if (!skusMap.has(sku.visit_id)) skusMap.set(sku.visit_id, []);
         skusMap.get(sku.visit_id)!.push({ id: sku.id });
       }
     }
 
-    return (visits || []).map((v: any) => ({
+    return visits.map((v: any) => ({
       id: v.id,
       visit_date: v.visit_date,
       notes: v.notes,
       created_at: v.created_at,
-      customers: v.customers || null,
-      users: v.users || null,
+      customers: v.customer_name ? { store_name: v.customer_name } : null,
+      users: v.salesman_name ? { full_name: v.salesman_name } : null,
       store_visit_skus: skusMap.get(v.id) || [],
     }));
   } catch {
@@ -66,33 +69,38 @@ export async function getStoreVisits(): Promise<StoreVisitRow[]> {
 
 export async function getVisitReport(id: string): Promise<VisitReportDetail | null> {
   try {
-    const { data: visit, error } = await supabase
-      .from("store_visits")
-      .select("id, visit_date, notes, latitude, longitude, customers(store_name), users:salesman_id(full_name)")
-      .eq("id", id)
-      .maybeSingle();
+    const visit = await queryOne(
+      `SELECT sv.id, sv.visit_date, sv.notes, sv.latitude, sv.longitude,
+              c.store_name as customer_name, u.full_name as salesman_name
+       FROM store_visits sv
+       LEFT JOIN customers c ON sv.customer_id = c.id
+       LEFT JOIN users u ON sv.salesman_id = u.id
+       WHERE sv.id = ?`,
+      [id]
+    );
 
-    if (error) throw error;
     if (!visit) return null;
 
-    const { data: skus } = await supabase
-      .from("store_visit_skus")
-      .select("id, notes, product_variants:variant_id(name, sku)")
-      .eq("visit_id", id);
+    const skus = await query(
+      `SELECT svs.id, svs.notes, pv.name as variant_name, pv.sku as variant_sku
+       FROM store_visit_skus svs
+       LEFT JOIN product_variants pv ON svs.variant_id = pv.id
+       WHERE svs.visit_id = ?`,
+      [id]
+    );
 
-    const v = visit as any;
     return {
-      id: v.id,
-      visit_date: v.visit_date,
-      notes: v.notes,
-      latitude: v.latitude,
-      longitude: v.longitude,
-      customers: Array.isArray(v.customers) ? v.customers[0] || null : v.customers || null,
-      users: Array.isArray(v.users) ? v.users[0] || null : v.users || null,
-      store_visit_skus: (skus || []).map((s: any) => ({
+      id: visit.id,
+      visit_date: visit.visit_date,
+      notes: visit.notes,
+      latitude: visit.latitude,
+      longitude: visit.longitude,
+      customers: visit.customer_name ? { store_name: visit.customer_name } : null,
+      users: visit.salesman_name ? { full_name: visit.salesman_name } : null,
+      store_visit_skus: skus.map((s: any) => ({
         id: s.id,
         notes: s.notes,
-        product_variants: s.product_variants || null,
+        product_variants: s.variant_name ? { name: s.variant_name, sku: s.variant_sku } : null,
       })),
     };
   } catch {

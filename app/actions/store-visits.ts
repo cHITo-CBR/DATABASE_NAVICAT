@@ -1,6 +1,5 @@
 "use server";
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, execute, generateUUID } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 import { notifyRole } from "@/app/actions/notifications";
 
@@ -15,19 +14,13 @@ export interface CreateStoreVisitInput {
 export async function createStoreVisit(input: CreateStoreVisitInput) {
   try {
     const visitId = generateUUID();
-    const { error } = await supabase.from("store_visits").insert({
-      id: visitId,
-      customer_id: input.customer_id,
-      salesman_id: input.salesman_id,
-      notes: input.notes || null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      visit_date: new Date().toISOString(),
-    });
+    await execute(
+      `INSERT INTO store_visits (id, customer_id, salesman_id, notes, latitude, longitude, visit_date)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+      [visitId, input.customer_id, input.salesman_id, input.notes || null,
+       input.latitude ?? null, input.longitude ?? null]
+    );
 
-    if (error) throw error;
-
-    // Trigger Notification for Supervisors
     await notifyRole("supervisor", "New Store Visit Logged", `A salesman has logged a new store visit.`);
 
     revalidatePath("/salesman/dashboard");
@@ -42,19 +35,20 @@ export async function createStoreVisit(input: CreateStoreVisitInput) {
 
 export async function getSalesmanVisits(salesmanId: string) {
   try {
-    const { data, error } = await supabase
-      .from("store_visits")
-      .select("*, customers(store_name, address)")
-      .eq("salesman_id", salesmanId)
-      .order("visit_date", { ascending: false });
-
-    if (error) throw error;
+    const rows = await query(
+      `SELECT sv.*, c.store_name, c.address
+       FROM store_visits sv
+       LEFT JOIN customers c ON sv.customer_id = c.id
+       WHERE sv.salesman_id = ?
+       ORDER BY sv.visit_date DESC`,
+      [salesmanId]
+    );
 
     return {
       success: true,
-      data: (data || []).map((v: any) => ({
+      data: rows.map((v: any) => ({
         ...v,
-        customers: v.customers || null,
+        customers: v.store_name ? { store_name: v.store_name, address: v.address } : null,
       })),
     };
   } catch (error: any) {

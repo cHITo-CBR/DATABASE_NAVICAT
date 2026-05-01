@@ -6,8 +6,7 @@
  * These functions run on the server and are called directly from client forms.
  */
 
-import supabase from "@/lib/db";
-import { generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { createSession, getSession, clearSession } from "@/lib/session";
@@ -15,10 +14,6 @@ import { notifyRole } from "@/app/actions/notifications";
 
 /**
  * Handles new user registration.
- * 1. Validates input
- * 2. Checks for existing users
- * 3. Hashes passwords
- * 4. Inserts into 'users' table (and 'customers' table for buyers)
  */
 export async function registerUser(prevState: any, formData: FormData) {
   const fullName = formData.get("fullName") as string;
@@ -27,67 +22,55 @@ export async function registerUser(prevState: any, formData: FormData) {
   const password = formData.get("password") as string;
   const roleName = formData.get("role") as string;
 
-  // Basic validation
   if (!fullName || !email || !password || !roleName) {
     return { error: "Missing required fields." };
   }
 
   try {
-    // Map role names to database IDs
     const roleMap: Record<string, number> = {
       admin: 1, supervisor: 2, salesman: 3, buyer: 4
     };
     const roleId = roleMap[roleName] || 4;
 
-    // Check if email already exists in the system
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle();
-
+    // Check if email already exists
+    const existing = await queryOne("SELECT id FROM users WHERE email = ?", [email]);
     if (existing) {
       return { error: "User already exists with this email." };
     }
 
     const userId = generateUUID();
-    // Buyers and specific admin emails are auto-approved
     const isBuyer = roleName === "buyer";
     const isAutoApprove = isBuyer || email === "admin@flowstock.com";
-    
-    // Hash the password for secure storage
+
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create the user record
-    const { error: insertError } = await supabase.from("users").insert({
-      id: userId,
-      full_name: fullName,
-      email,
-      phone_number: phone || null,
-      password_hash: passwordHash,
-      role_id: roleId,
-      status: isAutoApprove ? "approved" : "pending",
-      is_active: isAutoApprove,
-    });
+    await execute(
+      `INSERT INTO users (id, full_name, email, phone_number, password_hash, role_id, status, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, fullName, email, phone || null, passwordHash, roleId,
+       isAutoApprove ? "approved" : "pending", isAutoApprove ? 1 : 0]
+    );
 
-    if (insertError) throw insertError;
-
-    // If user is a buyer, also create a record in the customers table
+    // If user is a buyer, also create a record in the customers table and link it
     if (isBuyer) {
-      await supabase.from("customers").insert({
-        id: generateUUID(),
-        store_name: fullName,
-        contact_person: fullName,
-        email,
-        phone_number: phone || null,
-        is_active: true,
-      });
+      const result = await execute(
+        `INSERT INTO customers (store_name, contact_person, email, phone, is_active, status)
+         VALUES (?, ?, ?, ?, 1, 'active')`,
+        [fullName, fullName, email, phone || null]
+      );
+      
+      const newCustomerId = (result as any).insertId;
+      
+      // Link the user to the customer
+      await execute(
+        `UPDATE users SET linked_customer_id = ? WHERE id = ?`,
+        [newCustomerId, userId]
+      );
     }
 
-    // Notify the admin of a new registration
     await notifyRole(
-      "admin", 
-      "New User Registration", 
+      "admin",
+      "New User Registration",
       `A new user (${fullName}) has registered as a ${roleName} and requires review.`,
       "info"
     );
@@ -101,9 +84,6 @@ export async function registerUser(prevState: any, formData: FormData) {
 
 /**
  * Handles user login.
- * 1. Authenticates credentials
- * 2. Checks account status (pending/rejected/active)
- * 3. Creates a secure identity session
  */
 export async function loginUser(prevState: any, formData: FormData) {
   const email = formData.get("email") as string;
@@ -115,18 +95,18 @@ export async function loginUser(prevState: any, formData: FormData) {
 
   try {
     // Fetch user and their role from database
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*, roles(name)")
-      .eq("email", email)
-      .maybeSingle();
+    const user = await queryOne(
+      `SELECT u.*, r.name as role_name
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.email = ?`,
+      [email]
+    );
 
-    if (error) throw error;
     if (!user) {
       return { error: "Invalid credentials." };
     }
 
-    // Compare provided password with hashed password in DB
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return { error: "Invalid credentials." };
@@ -143,8 +123,16 @@ export async function loginUser(prevState: any, formData: FormData) {
       return { error: "Account is inactive." };
     }
 
-    // Determine role and initialize session
-    const roleStr = user.roles?.name ? user.roles.name.toLowerCase() : "buyer";
+    const roleStr = user.role_name ? user.role_name.toLowerCase() : "buyer";
+
+    let linkedCustomerId = user.linked_customer_id;
+    if (!linkedCustomerId && roleStr === "buyer") {
+      const customer = await queryOne<{ id: string }>(
+        "SELECT id FROM customers WHERE email = ?",
+        [email]
+      );
+      linkedCustomerId = customer?.id || null;
+    }
 
     await createSession({
       id: user.id,
@@ -152,6 +140,7 @@ export async function loginUser(prevState: any, formData: FormData) {
       name: user.full_name,
       full_name: user.full_name,
       role: roleStr,
+      linked_customer_id: linkedCustomerId,
     });
 
     return { success: true, role: roleStr };
@@ -181,4 +170,3 @@ export async function getCurrentUser() {
     return null;
   }
 }
-

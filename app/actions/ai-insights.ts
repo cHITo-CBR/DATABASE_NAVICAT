@@ -13,22 +13,15 @@ export interface AIInsightRow {
   created_at: string;
 }
 
-import supabase from "@/lib/db";
+import { query } from "@/lib/db-helpers";
 
 export async function getAIInsights(): Promise<AIInsightRow[]> {
   try {
-    const { data, error } = await supabase
-      .from("ai_insights")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const rows = await query(
+      "SELECT * FROM ai_insights ORDER BY created_at DESC"
+    );
 
-    if (error) {
-      // Table may not exist — that's expected
-      console.warn("AI insights table not available:", error.message);
-      return [];
-    }
-
-    return (data || []).map((row: any) => ({
+    return rows.map((row: any) => ({
       ...row,
       data: typeof row.data === "string" ? JSON.parse(row.data) : row.data,
     }));

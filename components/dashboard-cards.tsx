@@ -24,7 +24,7 @@ export function StatCard({ label, value, icon: Icon, trend, className }: StatCar
           <Icon className="h-6 w-6" />
         </div>
       </div>
-      
+
       {trend && (
         <div className="mt-4 flex items-center gap-1">
           <span className={cn(
@@ -61,7 +61,7 @@ export function CustomerCard({ name, email, phone, storeName, joinedDate, classN
           {storeName && <span className="text-sm text-green-600 font-medium">{storeName}</span>}
         </div>
       </div>
-      
+
       <div className="space-y-1.5 pt-2 border-t border-gray-50">
         <div className="flex items-center justify-between text-sm">
           <span className="text-gray-400">Email</span>
@@ -103,13 +103,13 @@ export function ProductCard({ name, category, price, imageUrl, stock, className 
           </div>
         )}
       </div>
-      
+
       <div className="flex flex-1 flex-col justify-between py-0.5">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-semibold uppercase tracking-wider text-green-600">{category}</span>
           <h3 className="font-bold text-gray-900 line-clamp-1">{name}</h3>
         </div>
-        
+
         <div className="flex items-center justify-between">
           <span className="text-lg font-bold text-gray-900">${price.toLocaleString()}</span>
           {stock !== undefined && (

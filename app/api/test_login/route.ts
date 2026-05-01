@@ -1,14 +1,14 @@
-import supabase from "@/lib/db";
+import { queryOne } from "@/lib/db-helpers";
 
 export async function GET() {
   try {
-    const { data: user, error } = await supabase
-      .from("users")
-      .select("*, roles(name)")
-      .eq("email", "admin@flowstock.com")
-      .maybeSingle();
-
-    if (error) throw error;
+    const user = await queryOne(
+      `SELECT u.*, r.name as role_name
+       FROM users u
+       LEFT JOIN roles r ON u.role_id = r.id
+       WHERE u.email = ?`,
+      ["admin@flowstock.com"]
+    );
 
     return Response.json({ user, error: null });
   } catch (error: any) {

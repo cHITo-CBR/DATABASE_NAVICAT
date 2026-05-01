@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import supabase from "@/lib/db";
+import { query, queryOne } from "@/lib/db-helpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MapPin, Phone, Building2, Clock, Mail, ChevronLeft, Navigation, Receipt } from "lucide-react";
@@ -21,31 +21,39 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
   const customerId = (await params).id;
 
   // Fetch Customer
-  const { data: customer, error: custError } = await supabase
-    .from("customers")
-    .select("*, users:assigned_salesman_id(full_name)")
-    .eq("id", customerId)
-    .single();
+  const customer = await queryOne(
+    `SELECT c.*, u.full_name as salesman_name
+     FROM customers c
+     LEFT JOIN users u ON c.assigned_salesman_id = u.id
+     WHERE c.id = ?`,
+    [customerId]
+  );
 
-  if (custError || !customer) {
+  if (!customer) {
     return <div className="p-10 text-center text-gray-500">Customer not found.</div>;
   }
 
   // Fetch recent orders
-  const { data: orders } = await supabase
-    .from("sales_transactions")
-    .select("*, users:salesman_id(full_name)")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const orders = await query(
+    `SELECT st.*, u.full_name as salesman_name
+     FROM sales_transactions st
+     LEFT JOIN users u ON st.salesman_id = u.id
+     WHERE st.customer_id = ?
+     ORDER BY st.created_at DESC
+     LIMIT 10`,
+    [customerId]
+  );
 
   // Fetch recent visits
-  const { data: visits } = await supabase
-    .from("store_visits")
-    .select("*, users:salesman_id(full_name)")
-    .eq("customer_id", customerId)
-    .order("visit_date", { ascending: false })
-    .limit(10);
+  const visits = await query(
+    `SELECT sv.*, u.full_name as salesman_name
+     FROM store_visits sv
+     LEFT JOIN users u ON sv.salesman_id = u.id
+     WHERE sv.customer_id = ?
+     ORDER BY sv.visit_date DESC
+     LIMIT 10`,
+    [customerId]
+  );
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
@@ -134,7 +142,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
                        <TableCell className="text-sm text-gray-600 font-medium">
                          {new Date(o.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                        </TableCell>
-                       <TableCell className="text-sm text-gray-600">{o.users?.full_name || 'N/A'}</TableCell>
+                       <TableCell className="text-sm text-gray-600">{o.salesman_name || 'N/A'}</TableCell>
                        <TableCell className="text-right font-bold text-[#005914]">
                          ₱{o.total_amount?.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                        </TableCell>
@@ -178,7 +186,7 @@ export default async function CustomerDetailsPage({ params }: { params: { id: st
                            {new Date(v.visit_date || v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                          </div>
                        </TableCell>
-                       <TableCell className="text-sm text-gray-600">{v.users?.full_name || 'N/A'}</TableCell>
+                       <TableCell className="text-sm text-gray-600">{v.salesman_name || 'N/A'}</TableCell>
                        <TableCell className="text-xs text-gray-500 italic max-w-[200px] truncate" title={v.notes || 'No notes'}>
                          {v.notes ? `"${v.notes}"` : '—'}
                        </TableCell>
