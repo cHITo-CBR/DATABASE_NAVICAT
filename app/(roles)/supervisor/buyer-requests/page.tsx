@@ -13,6 +13,12 @@ const statusColors: Record<string, string> = {
   rejected: "bg-red-50 text-red-700",
 };
 
+function normalizeStatus(status: string) {
+  if (status === "processed") return "fulfilled";
+  if (status === "cancelled") return "rejected";
+  return status;
+}
+
 export default function SupervisorBuyerRequestsPage() {
   const [requests, setRequests] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -60,7 +66,9 @@ export default function SupervisorBuyerRequestsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((r) => (
+                {filtered.map((r) => {
+                  const displayStatus = normalizeStatus(r.status);
+                  return (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">{r.users?.full_name || "—"}</TableCell>
                     <TableCell>{r.customers?.store_name || "—"}</TableCell>
@@ -68,12 +76,14 @@ export default function SupervisorBuyerRequestsPage() {
                       <span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded-md">{r.buyer_request_items?.length || 0}</span>
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase ${statusColors[r.status] || "bg-gray-100 text-gray-700"}`}>{r.status}</span>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md uppercase ${statusColors[displayStatus] || "bg-gray-100 text-gray-700"}`}>
+                        {displayStatus}
+                      </span>
                     </TableCell>
                     <TableCell className="text-gray-500 truncate max-w-[150px]">{r.notes || "—"}</TableCell>
                     <TableCell>{new Date(r.created_at).toLocaleDateString()}</TableCell>
                   </TableRow>
-                ))}
+                )})}
               </TableBody>
             </Table>
           )}

@@ -1,5 +1,5 @@
 "use server";
-import { query, queryOne, execute } from "@/lib/db-helpers";
+import { query, queryOne, execute, getTableColumns } from "@/lib/db-helpers";
 
 // ══════════════════════════════════════════════════════════════
 // TYPES
@@ -26,6 +26,11 @@ export interface TeamSalesman {
   monthlySales: number;
 }
 
+async function tableExists(tableName: string) {
+  const columns = await getTableColumns(tableName);
+  return columns.length > 0;
+}
+
 // ══════════════════════════════════════════════════════════════
 // SUPERVISOR DASHBOARD
 // ══════════════════════════════════════════════════════════════
@@ -35,10 +40,15 @@ export async function getSupervisorKPIs(): Promise<SupervisorKPIs> {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
   try {
+    const hasCallsheets = await tableExists("callsheets");
+    const submittedPromise = hasCallsheets
+      ? queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE status = 'submitted'")
+      : Promise.resolve<{ count: number } | null>({ count: 0 });
+
     const [activeSalesmenRow, visitsTodayRow, submittedRow, pendingBookingsRow, salesData, lowStockRow] = await Promise.all([
       queryOne<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE role_id = 3 AND is_active = 1"),
       queryOne<{ count: number }>("SELECT COUNT(*) as count FROM store_visits WHERE visit_date >= ?", [today]),
-      queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE status = 'submitted'"),
+      submittedPromise,
       queryOne<{ count: number }>("SELECT COUNT(*) as count FROM sales_transactions WHERE status = 'pending'"),
       query("SELECT total_amount FROM sales_transactions WHERE created_at >= ?", [monthStart]),
       queryOne<{ count: number }>("SELECT COUNT(*) as count FROM inventory_ledger WHERE balance < 10"),
@@ -72,15 +82,19 @@ export async function getTeamSalesmen(): Promise<TeamSalesman[]> {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
   try {
+    const hasCallsheets = await tableExists("callsheets");
     const salesmen = await query(
       "SELECT id, full_name, email, status, is_active FROM users WHERE role_id = 3 ORDER BY full_name"
     );
 
     const results: TeamSalesman[] = await Promise.all(
       (salesmen || []).map(async (s: any) => {
+        const callsheetPromise = hasCallsheets
+          ? queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE salesman_id = ?", [s.id])
+          : Promise.resolve<{ count: number } | null>({ count: 0 });
         const [visitsTodayRow, totalCallsheetsRow, confirmedBookingsRow, salesData] = await Promise.all([
           queryOne<{ count: number }>("SELECT COUNT(*) as count FROM store_visits WHERE salesman_id = ? AND visit_date >= ?", [s.id, today]),
-          queryOne<{ count: number }>("SELECT COUNT(*) as count FROM callsheets WHERE salesman_id = ?", [s.id]),
+          callsheetPromise,
           queryOne<{ count: number }>("SELECT COUNT(*) as count FROM sales_transactions WHERE salesman_id = ? AND status != 'cancelled'", [s.id]),
           query("SELECT total_amount FROM sales_transactions WHERE salesman_id = ? AND created_at >= ?", [s.id, monthStart]),
         ]);
@@ -107,6 +121,16 @@ export async function getTeamSalesmen(): Promise<TeamSalesman[]> {
 
 export async function getSalesmanDetail(salesmanId: string) {
   try {
+    const hasCallsheets = await tableExists("callsheets");
+    const callsheetPromise = hasCallsheets
+      ? query(
+          `SELECT cs.*, c.store_name FROM callsheets cs
+           LEFT JOIN customers c ON cs.customer_id = c.id
+           WHERE cs.salesman_id = ? ORDER BY cs.created_at DESC LIMIT 20`,
+          [salesmanId]
+        )
+      : Promise.resolve<any[]>([]);
+
     const [profile, visits, callsheets, bookings] = await Promise.all([
       queryOne(
         "SELECT id, full_name, email, phone_number, status, created_at FROM users WHERE id = ?",
@@ -118,12 +142,7 @@ export async function getSalesmanDetail(salesmanId: string) {
          WHERE sv.salesman_id = ? ORDER BY sv.visit_date DESC LIMIT 20`,
         [salesmanId]
       ),
-      query(
-        `SELECT cs.*, c.store_name FROM callsheets cs
-         LEFT JOIN customers c ON cs.customer_id = c.id
-         WHERE cs.salesman_id = ? ORDER BY cs.created_at DESC LIMIT 20`,
-        [salesmanId]
-      ),
+      callsheetPromise,
       query(
         `SELECT st.*, c.store_name FROM sales_transactions st
          LEFT JOIN customers c ON st.customer_id = c.id
@@ -157,7 +176,10 @@ export async function getTeamCustomers() {
        WHERE c.is_active = 1
        ORDER BY c.store_name`
     );
-    return rows;
+    return rows.map((c: any) => ({
+      ...c,
+      users: c.salesman_name ? { full_name: c.salesman_name } : null,
+    }));
   } catch (error) {
     console.error("Error fetching team customers:", error);
     return [];
@@ -178,7 +200,11 @@ export async function getTeamVisits() {
        ORDER BY sv.visit_date DESC
        LIMIT 100`
     );
-    return rows;
+    return rows.map((v: any) => ({
+      ...v,
+      customers: v.store_name ? { store_name: v.store_name } : null,
+      users: v.salesman_name ? { full_name: v.salesman_name } : null,
+    }));
   } catch (error) {
     console.error("Error fetching team visits:", error);
     return [];
@@ -191,6 +217,9 @@ export async function getTeamVisits() {
 
 export async function getCallsheetDetail(callsheetId: string) {
   try {
+    const hasCallsheets = await tableExists("callsheets");
+    if (!hasCallsheets) return null;
+
     const callsheet = await queryOne(
       `SELECT cs.*, c.store_name, c.address, u.full_name as salesman_name, u.email as salesman_email
        FROM callsheets cs
@@ -202,13 +231,16 @@ export async function getCallsheetDetail(callsheetId: string) {
 
     if (!callsheet) return null;
 
-    const items = await query(
-      `SELECT ci.*, p.name as product_name, p.total_packaging, p.net_weight
-       FROM callsheet_items ci
-       LEFT JOIN products p ON ci.product_id = p.id
-       WHERE ci.callsheet_id = ?`,
-      [callsheetId]
-    );
+    const hasItems = await tableExists("callsheet_items");
+    const items = hasItems
+      ? await query(
+          `SELECT ci.*, p.name as product_name, p.total_packaging, p.net_weight
+           FROM callsheet_items ci
+           LEFT JOIN products p ON ci.product_id = p.id
+           WHERE ci.callsheet_id = ?`,
+          [callsheetId]
+        )
+      : [];
 
     return {
       ...callsheet,
@@ -231,6 +263,10 @@ export async function getCallsheetDetail(callsheetId: string) {
 
 export async function reviewCallsheet(callsheetId: string, status: "approved" | "rejected", supervisorNote?: string) {
   try {
+    const hasCallsheets = await tableExists("callsheets");
+    if (!hasCallsheets) {
+      return { error: "Callsheets table not available." };
+    }
     await execute(
       "UPDATE callsheets SET status = ?, remarks = ? WHERE id = ?",
       [status, supervisorNote || null, callsheetId]
@@ -281,8 +317,8 @@ export async function getTeamBuyerRequests() {
 
     return requests.map((r: any) => ({
       ...r,
-      store_name: r.store_name || null,
-      salesman_name: r.salesman_name || null,
+      customers: r.store_name ? { store_name: r.store_name } : null,
+      users: r.salesman_name ? { full_name: r.salesman_name } : null,
       buyer_request_items: itemsMap.get(r.id) || [],
     }));
   } catch (error) {
@@ -305,7 +341,11 @@ export async function getTeamBookings() {
        ORDER BY st.created_at DESC
        LIMIT 100`
     );
-    return rows;
+    return rows.map((b: any) => ({
+      ...b,
+      customers: b.store_name ? { store_name: b.store_name } : null,
+      users: b.salesman_name ? { full_name: b.salesman_name } : null,
+    }));
   } catch (error) {
     console.error("Error fetching team bookings:", error);
     return [];
@@ -319,7 +359,7 @@ export async function getTeamBookings() {
 export async function getInventoryImpact() {
   try {
     const lowStock = await query(
-      `SELECT il.*, pv.name as variant_name, pv.sku, p.name as product_name
+      `SELECT il.*, pv.name as variant_name, pv.sku as variant_sku, p.name as product_name
        FROM inventory_ledger il
        LEFT JOIN product_variants pv ON il.product_variant_id = pv.id
        LEFT JOIN products p ON pv.product_id = p.id
@@ -329,26 +369,36 @@ export async function getInventoryImpact() {
     );
 
     const recentMovements = await query(
-      `SELECT il.*, pv.name as variant_name, pv.sku, p.name as product_name
+      `SELECT il.*, pv.name as variant_name, pv.sku as variant_sku, p.name as product_name,
+              imt.name as movement_type_name, imt.direction as movement_type_direction
        FROM inventory_ledger il
        LEFT JOIN product_variants pv ON il.product_variant_id = pv.id
        LEFT JOIN products p ON pv.product_id = p.id
+       LEFT JOIN inventory_movement_types imt ON il.movement_type_id = imt.id
        ORDER BY il.created_at DESC
        LIMIT 20`
     );
 
+    const mapVariant = (item: any) => {
+      if (!item.product_name && !item.variant_name) return null;
+      return {
+        name: item.variant_name || "Standard",
+        sku: item.variant_sku || null,
+        products: item.product_name ? { name: item.product_name } : null,
+      };
+    };
+
     return {
       lowStock: lowStock.map((item: any) => ({
         ...item,
-        variant_name: item.variant_name || null,
-        sku: item.sku || null,
-        product_name: item.product_name || null,
+        product_variants: mapVariant(item),
       })),
       recentMovements: recentMovements.map((item: any) => ({
         ...item,
-        variant_name: item.variant_name || null,
-        sku: item.sku || null,
-        product_name: item.product_name || null,
+        product_variants: mapVariant(item),
+        inventory_movement_types: item.movement_type_name
+          ? { name: item.movement_type_name, direction: item.movement_type_direction }
+          : null,
       })),
     };
   } catch (error) {
@@ -363,6 +413,17 @@ export async function getInventoryImpact() {
 
 export async function getRecentTeamActivity() {
   try {
+    const hasCallsheets = await tableExists("callsheets");
+    const callsheetPromise = hasCallsheets
+      ? query(
+          `SELECT cs.id, cs.status, cs.created_at, c.store_name, u.full_name as salesman_name
+           FROM callsheets cs
+           LEFT JOIN customers c ON cs.customer_id = c.id
+           LEFT JOIN users u ON cs.salesman_id = u.id
+           ORDER BY cs.created_at DESC LIMIT 5`
+        )
+      : Promise.resolve<any[]>([]);
+
     const [visits, callsheets, requests] = await Promise.all([
       query(
         `SELECT sv.id, sv.visit_date, sv.created_at, c.store_name, u.full_name as salesman_name
@@ -371,13 +432,7 @@ export async function getRecentTeamActivity() {
          LEFT JOIN users u ON sv.salesman_id = u.id
          ORDER BY sv.created_at DESC LIMIT 5`
       ),
-      query(
-        `SELECT cs.id, cs.status, cs.created_at, c.store_name, u.full_name as salesman_name
-         FROM callsheets cs
-         LEFT JOIN customers c ON cs.customer_id = c.id
-         LEFT JOIN users u ON cs.salesman_id = u.id
-         ORDER BY cs.created_at DESC LIMIT 5`
-      ),
+      callsheetPromise,
       query(
         `SELECT br.id, br.status, br.created_at, c.store_name, u.full_name as salesman_name
          FROM buyer_requests br
@@ -388,9 +443,21 @@ export async function getRecentTeamActivity() {
     ]);
 
     return {
-      visits: visits.map((v: any) => ({ ...v, store_name: v.store_name || null, salesman_name: v.salesman_name || null })),
-      callsheets: callsheets.map((cs: any) => ({ ...cs, store_name: cs.store_name || null, salesman_name: cs.salesman_name || null })),
-      requests: requests.map((br: any) => ({ ...br, store_name: br.store_name || null, salesman_name: br.salesman_name || null })),
+      visits: visits.map((v: any) => ({
+        ...v,
+        customers: v.store_name ? { store_name: v.store_name } : null,
+        users: v.salesman_name ? { full_name: v.salesman_name } : null,
+      })),
+      callsheets: callsheets.map((cs: any) => ({
+        ...cs,
+        customers: cs.store_name ? { store_name: cs.store_name } : null,
+        users: cs.salesman_name ? { full_name: cs.salesman_name } : null,
+      })),
+      requests: requests.map((br: any) => ({
+        ...br,
+        customers: br.store_name ? { store_name: br.store_name } : null,
+        users: br.salesman_name ? { full_name: br.salesman_name } : null,
+      })),
     };
   } catch (error) {
     console.error("Error fetching recent team activity:", error);
