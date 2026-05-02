@@ -1,10 +1,11 @@
 
 "use server";
 
-import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID, getTableColumns } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 import pool from "@/lib/db";
+import { getSalesItemConfig } from "@/lib/sales-schema";
 
 export interface BuyerRequestItem {
   product_id: string;
@@ -88,6 +89,16 @@ export async function getAllBuyerRequests() {
 export async function approveBuyerRequest(requestId: string) {
   const connection = await pool.getConnection();
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) {
+      return { error: "sales_transactions table is missing." };
+    }
+    const itemConfig = await getSalesItemConfig();
+    if (!itemConfig) {
+      return { error: "Sales items table is missing." };
+    }
+    const hasProductVariants = (await getTableColumns("product_variants")).length > 0;
+
     await connection.beginTransaction();
 
     // 1. Get request details
@@ -109,16 +120,40 @@ export async function approveBuyerRequest(requestId: string) {
       [transactionId, salesmanId, request.customer_id]
     );
 
-    // 3. Move items to transaction_items
+    // 3. Move items to sales items table
     for (const item of items) {
-      // Get product price
-      const prod = await queryOne("SELECT packaging_price FROM products WHERE id = ?", [item.product_id]);
-      const price = Number(prod?.packaging_price) || 0;
+      let variantId = item.product_id;
+      let price = 0;
 
+      if (itemConfig.variantColumn === "variant_id" && hasProductVariants) {
+        const variant = await queryOne(
+          "SELECT id, unit_price FROM product_variants WHERE product_id = ? ORDER BY is_active DESC, created_at ASC LIMIT 1",
+          [item.product_id]
+        );
+        if (!variant?.id) {
+          throw new Error("No variant found for requested product.");
+        }
+        variantId = variant.id;
+        price = Number(variant.unit_price) || 0;
+      } else {
+        const prod = await queryOne("SELECT packaging_price FROM products WHERE id = ?", [item.product_id]);
+        price = Number(prod?.packaging_price) || 0;
+      }
+
+      const subtotal = price * item.quantity;
+      const columns = ["transaction_id", itemConfig.variantColumn, "quantity", "unit_price", itemConfig.subtotalColumn];
+      const values: any[] = [transactionId, variantId, item.quantity, price, subtotal];
+
+      if (itemConfig.requiresId) {
+        columns.unshift("id");
+        values.unshift(generateUUID());
+      }
+
+      const placeholders = columns.map(() => "?").join(", ");
       await connection.execute(
-        `INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, total_price) 
-         VALUES (?, ?, ?, ?, ?)`,
-        [transactionId, item.product_id, item.quantity, price, price * item.quantity]
+        `INSERT INTO ${itemConfig.table} (${columns.join(", ")})
+         VALUES (${placeholders})`,
+        values
       );
     }
 

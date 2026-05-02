@@ -1,7 +1,7 @@
 
 "use server";
 
-import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID, getTableColumns } from "@/lib/db-helpers";
 import { getSession } from "@/lib/session";
 import { revalidatePath } from "next/cache";
 
@@ -23,6 +23,8 @@ export interface AppointmentRow {
  */
 export async function getAppointments(salesmanId?: string) {
   try {
+    const columns = await getTableColumns("appointments");
+    if (columns.length === 0) return [];
     const sql = `
       SELECT a.*, c.store_name as customer_name, u.full_name as salesman_name
       FROM appointments a
@@ -58,6 +60,10 @@ export async function createAppointment(formData: FormData) {
   }
 
   try {
+    const columns = await getTableColumns("appointments");
+    if (columns.length === 0) {
+      return { error: "Appointments table is missing. Run the admin visit tables SQL." };
+    }
     await execute(
       `INSERT INTO appointments (id, customer_id, salesman_id, title, appointment_type, scheduled_at, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -79,6 +85,10 @@ export async function createAppointment(formData: FormData) {
  */
 export async function updateAppointmentStatus(id: string, status: string) {
   try {
+    const columns = await getTableColumns("appointments");
+    if (columns.length === 0) {
+      return { error: "Appointments table is missing." };
+    }
     await execute("UPDATE appointments SET status = ? WHERE id = ?", [status, id]);
     revalidatePath("/admin/visits");
     revalidatePath("/visits");
@@ -93,6 +103,10 @@ export async function updateAppointmentStatus(id: string, status: string) {
  */
 export async function deleteAppointment(id: string) {
   try {
+    const columns = await getTableColumns("appointments");
+    if (columns.length === 0) {
+      return { error: "Appointments table is missing." };
+    }
     await execute("DELETE FROM appointments WHERE id = ?", [id]);
     revalidatePath("/visits");
     return { success: true };

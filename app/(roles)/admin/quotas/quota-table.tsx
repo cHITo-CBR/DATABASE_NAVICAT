@@ -47,7 +47,7 @@ export default function QuotaTable({ quotas }: QuotaTableProps) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Monthly Quotas</h3>
+        <h3 className="text-lg font-semibold">Current Month Quotas</h3>
         <Button onClick={handleAddNew} size="sm">
           <Plus className="h-4 w-4 mr-2" />
           Add Quota
@@ -56,7 +56,7 @@ export default function QuotaTable({ quotas }: QuotaTableProps) {
 
       {quotas.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
-          <p>No quotas set yet.</p>
+          <p>No quotas set for this month.</p>
           <Button onClick={handleAddNew} variant="outline" className="mt-2">
             Set Your First Quota
           </Button>

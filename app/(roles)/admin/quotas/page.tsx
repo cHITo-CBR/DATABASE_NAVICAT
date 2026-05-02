@@ -4,11 +4,13 @@ import { getQuotas, getCurrentMonthQuotaSummary } from "@/app/actions/quotas";
 import QuotaTable from "./quota-table";
 
 export default async function QuotasPage() {
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
   
   try {
     const [quotas, summary] = await Promise.all([
-      getQuotas({ year: currentYear }),
+      getQuotas({ year: currentYear, month: currentMonth }),
       getCurrentMonthQuotaSummary()
     ]);
 

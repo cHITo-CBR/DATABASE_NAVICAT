@@ -1,5 +1,5 @@
 "use server";
-import { query, execute, generateUUID } from "@/lib/db-helpers";
+import { query, execute, generateUUID, getTableColumns } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 import { notifyRole } from "@/app/actions/notifications";
 
@@ -13,12 +13,35 @@ export interface CreateStoreVisitInput {
 
 export async function createStoreVisit(input: CreateStoreVisitInput) {
   try {
+    const columns = await getTableColumns("store_visits");
+    if (columns.length === 0) {
+      return { success: false, error: "store_visits table is missing." };
+    }
+
     const visitId = generateUUID();
+    const insertColumns = ["id", "customer_id", "salesman_id", "notes", "visit_date"];
+    const insertValues: any[] = [
+      visitId,
+      input.customer_id,
+      input.salesman_id,
+      input.notes || null,
+      new Date(),
+    ];
+
+    if (columns.includes("latitude")) {
+      insertColumns.push("latitude");
+      insertValues.push(input.latitude ?? null);
+    }
+
+    if (columns.includes("longitude")) {
+      insertColumns.push("longitude");
+      insertValues.push(input.longitude ?? null);
+    }
+
+    const placeholders = insertColumns.map(() => "?").join(", ");
     await execute(
-      `INSERT INTO store_visits (id, customer_id, salesman_id, notes, latitude, longitude, visit_date)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [visitId, input.customer_id, input.salesman_id, input.notes || null,
-       input.latitude ?? null, input.longitude ?? null]
+      `INSERT INTO store_visits (${insertColumns.join(", ")}) VALUES (${placeholders})`,
+      insertValues
     );
 
     await notifyRole("supervisor", "New Store Visit Logged", `A salesman has logged a new store visit.`);
@@ -35,6 +58,10 @@ export async function createStoreVisit(input: CreateStoreVisitInput) {
 
 export async function getSalesmanVisits(salesmanId: string) {
   try {
+    const columns = await getTableColumns("store_visits");
+    if (columns.length === 0) {
+      return { success: false, error: "store_visits table is missing." };
+    }
     const rows = await query(
       `SELECT sv.*, c.store_name, c.address
        FROM store_visits sv

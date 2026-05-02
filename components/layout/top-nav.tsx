@@ -8,13 +8,13 @@ import { Button } from "@/components/ui/button";
 
 import { globalSearch, type SearchResult } from "@/app/actions/search";
 
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/theme-provider";
 import { useRouter } from "next/navigation";
 import { logoutUser } from "@/app/actions/auth";
 
 export function TopNav() {
 
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const router = useRouter();
 
   const [query, setQuery] = React.useState("");
@@ -90,7 +90,7 @@ export function TopNav() {
           variant="ghost"
           size="icon"
           className="text-gray-500 hover:text-[#005914] hover:bg-gray-50 rounded-full dark:hover:bg-gray-800"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onClick={() => setTheme((theme === "system" ? resolvedTheme : theme) === "dark" ? "light" : "dark")}
         >
           <Sun className="h-5 w-5 dark:hidden" />
           <Moon className="hidden h-5 w-5 dark:block" />

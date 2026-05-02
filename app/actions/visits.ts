@@ -1,5 +1,5 @@
 "use server";
-import { query, queryOne } from "@/lib/db-helpers";
+import { query, queryOne, getTableColumns } from "@/lib/db-helpers";
 
 export interface StoreVisitRow {
   id: string;
@@ -28,6 +28,8 @@ export interface VisitReportDetail {
 
 export async function getStoreVisits(): Promise<StoreVisitRow[]> {
   try {
+    const storeVisitColumns = await getTableColumns("store_visits");
+    if (storeVisitColumns.length === 0) return [];
     const visits = await query(
       `SELECT sv.id, sv.visit_date, sv.notes, sv.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
@@ -40,7 +42,8 @@ export async function getStoreVisits(): Promise<StoreVisitRow[]> {
     const visitIds = visits.map((v: any) => v.id);
     let skusMap = new Map<string, { id: string }[]>();
 
-    if (visitIds.length > 0) {
+    const skuColumns = await getTableColumns("store_visit_skus");
+    if (visitIds.length > 0 && skuColumns.length > 0) {
       const placeholders = visitIds.map(() => '?').join(',');
       const skus = await query(
         `SELECT id, visit_id FROM store_visit_skus WHERE visit_id IN (${placeholders})`,
@@ -69,8 +72,14 @@ export async function getStoreVisits(): Promise<StoreVisitRow[]> {
 
 export async function getVisitReport(id: string): Promise<VisitReportDetail | null> {
   try {
+    const storeVisitColumns = await getTableColumns("store_visits");
+    if (storeVisitColumns.length === 0) return null;
+    const hasLatitude = storeVisitColumns.includes("latitude");
+    const hasLongitude = storeVisitColumns.includes("longitude");
     const visit = await queryOne(
-      `SELECT sv.id, sv.visit_date, sv.notes, sv.latitude, sv.longitude,
+      `SELECT sv.id, sv.visit_date, sv.notes,
+              ${hasLatitude ? "sv.latitude" : "NULL"} as latitude,
+              ${hasLongitude ? "sv.longitude" : "NULL"} as longitude,
               c.store_name as customer_name, u.full_name as salesman_name
        FROM store_visits sv
        LEFT JOIN customers c ON sv.customer_id = c.id
@@ -81,13 +90,17 @@ export async function getVisitReport(id: string): Promise<VisitReportDetail | nu
 
     if (!visit) return null;
 
-    const skus = await query(
-      `SELECT svs.id, svs.notes, pv.name as variant_name, pv.sku as variant_sku
-       FROM store_visit_skus svs
-       LEFT JOIN product_variants pv ON svs.variant_id = pv.id
-       WHERE svs.visit_id = ?`,
-      [id]
-    );
+    let skus: any[] = [];
+    const skuColumns = await getTableColumns("store_visit_skus");
+    if (skuColumns.length > 0) {
+      skus = await query(
+        `SELECT svs.id, svs.notes, pv.name as variant_name, pv.sku as variant_sku
+         FROM store_visit_skus svs
+         LEFT JOIN product_variants pv ON svs.variant_id = pv.id
+         WHERE svs.visit_id = ?`,
+        [id]
+      );
+    }
 
     return {
       id: visit.id,

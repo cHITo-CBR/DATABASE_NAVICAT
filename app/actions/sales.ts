@@ -1,8 +1,9 @@
 "use server";
-import { query, queryOne, execute, generateUUID } from "@/lib/db-helpers";
+import { query, queryOne, execute, generateUUID, getTableColumns } from "@/lib/db-helpers";
 import { revalidatePath } from "next/cache";
 import { notifyRole, createNotification } from "@/app/actions/notifications";
 import pool from "@/lib/db";
+import { getSalesItemConfig, getSalesItemJoinConfig } from "@/lib/sales-schema";
 
 export interface SalesTransactionRow {
   id: string;
@@ -35,6 +36,8 @@ export interface SaleDetail {
 
 export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) return [];
     const rows = await query(
       `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
@@ -60,6 +63,9 @@ export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
 
 export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) return null;
+
     const transaction = await queryOne(
       `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
@@ -72,14 +78,19 @@ export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
 
     if (!transaction) return null;
 
-    const items = await query(
-      `SELECT sti.id, sti.quantity, sti.unit_price, sti.total_price as subtotal,
-              p.name as variant_name, p.id as variant_sku
-       FROM transaction_items sti
-       LEFT JOIN products p ON sti.product_id = p.id
-       WHERE sti.transaction_id = ?`,
-      [id]
-    );
+    const itemConfig = await getSalesItemConfig();
+    let items: any[] = [];
+    if (itemConfig) {
+      const joinConfig = await getSalesItemJoinConfig(itemConfig.variantColumn);
+      items = await query(
+        `SELECT sti.id, sti.quantity, sti.unit_price, sti.${itemConfig.subtotalColumn} as subtotal,
+                ${joinConfig.nameSelect} as variant_name, ${joinConfig.skuSelect} as variant_sku
+         FROM ${itemConfig.table} sti
+         ${joinConfig.join}
+         WHERE sti.transaction_id = ?`,
+        [id]
+      );
+    }
 
     return {
       id: transaction.id,
@@ -104,6 +115,8 @@ export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
 
 export async function exportSalesCSV(): Promise<string> {
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) return "";
     const rows = await query(
       `SELECT st.id, st.status, st.total_amount, st.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
@@ -147,6 +160,20 @@ export interface CreateBookingInput {
 export async function createBooking(input: CreateBookingInput) {
   const connection = await pool.getConnection();
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) {
+      return { success: false, error: "sales_transactions table is missing." };
+    }
+
+    const itemConfig = await getSalesItemConfig();
+    if (!itemConfig) {
+      return { success: false, error: "Sales items table is missing." };
+    }
+
+    const productColumns = await getTableColumns("products");
+    const hasTotalCases = productColumns.includes("total_cases");
+    const hasProductVariants = (await getTableColumns("product_variants")).length > 0;
+
     await connection.beginTransaction();
 
     const { customer_id, salesman_id, notes, items } = input;
@@ -162,19 +189,43 @@ export async function createBooking(input: CreateBookingInput) {
 
     // 2. Insert transaction items and deduct inventory
     for (const item of items) {
+      const subtotal = item.quantity * item.unit_price;
+      const columns = ["transaction_id", itemConfig.variantColumn, "quantity", "unit_price", itemConfig.subtotalColumn];
+      const values: any[] = [transactionId, item.variant_id, item.quantity, item.unit_price, subtotal];
+
+      if (itemConfig.requiresId) {
+        columns.unshift("id");
+        values.unshift(generateUUID());
+      }
+
+      const placeholders = columns.map(() => "?").join(", ");
       await connection.execute(
-        `INSERT INTO transaction_items (transaction_id, product_id, quantity, unit_price, total_price)
-         VALUES (?, ?, ?, ?, ?)`,
-        [transactionId, item.variant_id, item.quantity, item.unit_price, item.quantity * item.unit_price]
+        `INSERT INTO ${itemConfig.table} (${columns.join(", ")}) VALUES (${placeholders})`,
+        values
       );
 
       // Deduct inventory via product directly
-      await connection.execute(
-        `UPDATE products
-         SET total_cases = total_cases - ?
-         WHERE id = ?`,
-        [item.quantity, item.variant_id]
-      );
+      if (hasTotalCases) {
+        let productId = item.variant_id;
+        if (itemConfig.variantColumn === "variant_id" && hasProductVariants) {
+          const [rows] = await connection.execute(
+            "SELECT product_id FROM product_variants WHERE id = ?",
+            [item.variant_id]
+          );
+          const row = (rows as any[])[0];
+          if (!row?.product_id) {
+            throw new Error("Product variant not found for inventory update.");
+          }
+          productId = row.product_id;
+        }
+
+        await connection.execute(
+          `UPDATE products
+           SET total_cases = total_cases - ?
+           WHERE id = ?`,
+          [item.quantity, productId]
+        );
+      }
     }
 
     await connection.commit();
@@ -205,6 +256,10 @@ export async function createBooking(input: CreateBookingInput) {
 
 export async function getAllBookings() {
   try {
+    const salesColumns = await getTableColumns("sales_transactions");
+    if (salesColumns.length === 0) return [];
+    const itemConfig = await getSalesItemConfig();
+    const joinConfig = itemConfig ? await getSalesItemJoinConfig(itemConfig.variantColumn) : null;
     const transactions = await query(
       `SELECT st.*, c.store_name as customer_name, u.full_name as salesman_name
        FROM sales_transactions st
@@ -219,13 +274,14 @@ export async function getAllBookings() {
 
     // Fetch all items for these transactions
     let allItems: any[] = [];
-    if (transactionIds.length > 0) {
+    if (transactionIds.length > 0 && itemConfig && joinConfig) {
       const placeholders = transactionIds.map(() => '?').join(',');
       allItems = await query(
-        `SELECT sti.id, sti.transaction_id, sti.product_id as variant_id, sti.quantity, sti.unit_price, sti.total_price as subtotal, 
-                p.name as variant_name, p.id as variant_sku
-         FROM transaction_items sti
-         LEFT JOIN products p ON sti.product_id = p.id
+        `SELECT sti.id, sti.transaction_id, sti.${itemConfig.variantColumn} as variant_id,
+                sti.quantity, sti.unit_price, sti.${itemConfig.subtotalColumn} as subtotal,
+                ${joinConfig.nameSelect} as variant_name, ${joinConfig.skuSelect} as variant_sku
+         FROM ${itemConfig.table} sti
+         ${joinConfig.join}
          WHERE sti.transaction_id IN (${placeholders})`,
         transactionIds
       );
@@ -263,6 +319,10 @@ export async function updateBookingStatus(transactionId: string, status: string)
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+    const itemConfig = await getSalesItemConfig();
+    const hasProductVariants = (await getTableColumns("product_variants")).length > 0;
+    const productColumns = await getTableColumns("products");
+    const hasTotalCases = productColumns.includes("total_cases");
 
     console.log(`[Inventory] Updating transaction ${transactionId} to ${status}`);
 
@@ -299,20 +359,36 @@ export async function updateBookingStatus(transactionId: string, status: string)
     if (isNowCancelled && !wasAlreadyCancelled) {
       console.log(`[Inventory] Status changed to CANCELLED. Restoring deduction...`);
 
-      const [itemRows] = await connection.execute(
-        "SELECT product_id as variant_id, quantity FROM transaction_items WHERE transaction_id = ?",
-        [transactionId]
-      );
+      const itemsQuery = itemConfig
+        ? `SELECT ${itemConfig.variantColumn} as variant_id, quantity FROM ${itemConfig.table} WHERE transaction_id = ?`
+        : null;
+      const [itemRows] = itemsQuery
+        ? await connection.execute(itemsQuery, [transactionId])
+        : [[], []];
 
       for (const item of (itemRows as any[])) {
+        if (!hasTotalCases) continue;
+        let productId = item.variant_id;
+        if (itemConfig?.variantColumn === "variant_id" && hasProductVariants) {
+          const [rows] = await connection.execute(
+            "SELECT product_id FROM product_variants WHERE id = ?",
+            [item.variant_id]
+          );
+          const row = (rows as any[])[0];
+          if (!row?.product_id) {
+            throw new Error("Product variant not found for inventory restore.");
+          }
+          productId = row.product_id;
+        }
+
         // Restore stock directly to product
         await connection.execute(
           `UPDATE products
            SET total_cases = total_cases + ?
            WHERE id = ?`,
-          [item.quantity, item.variant_id]
+          [item.quantity, productId]
         );
-        console.log(`[Inventory] Restored ${item.quantity} cases for product ${item.variant_id}.`);
+        console.log(`[Inventory] Restored ${item.quantity} cases for product ${productId}.`);
       }
     }
 

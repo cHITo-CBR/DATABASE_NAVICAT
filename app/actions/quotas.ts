@@ -1,5 +1,5 @@
 "use server";
-import { query, queryOne, execute } from "@/lib/db-helpers";
+import { query, queryOne, execute, getTableColumns } from "@/lib/db-helpers";
 import { getCurrentUser } from "@/app/actions/auth";
 
 export interface QuotaRow {
@@ -31,6 +31,8 @@ export async function getQuotas(filters?: {
   salesman_id?: string;
 }): Promise<QuotaRow[]> {
   try {
+    const quotaColumns = await getTableColumns("salesman_quotas");
+    if (quotaColumns.length === 0) return [];
     // Inline the quota_report_view logic with JOINs
     let sql = `
       SELECT q.*, u.full_name as salesman_name, u.email as salesman_email
@@ -120,6 +122,10 @@ export async function createQuota(formData: FormData) {
   }
 
   try {
+    const quotaColumns = await getTableColumns("salesman_quotas");
+    if (quotaColumns.length === 0) {
+      return { error: "Quota tables are missing. Run the quota SQL script." };
+    }
     await execute(
       `INSERT INTO salesman_quotas (salesman_id, month, year, target_amount, target_units, target_orders, status)
        VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
@@ -152,6 +158,10 @@ export async function updateQuota(id: number, formData: FormData) {
   const status = formData.get("status") as string;
 
   try {
+    const quotaColumns = await getTableColumns("salesman_quotas");
+    if (quotaColumns.length === 0) {
+      return { error: "Quota tables are missing. Run the quota SQL script." };
+    }
     await execute(
       `UPDATE salesman_quotas SET target_amount = ?, target_units = ?, target_orders = ?,
        achieved_amount = ?, achieved_units = ?, achieved_orders = ?, status = ?
@@ -179,6 +189,10 @@ export async function getCurrentMonthQuotaSummary(): Promise<{
   completion_rate: number;
 }> {
   try {
+    const quotaColumns = await getTableColumns("salesman_quotas");
+    if (quotaColumns.length === 0) {
+      return { total_quotas: 0, completed_quotas: 0, total_target: 0, total_achieved: 0, completion_rate: 0 };
+    }
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
 
