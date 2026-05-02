@@ -67,7 +67,10 @@ export function OrderList({ requests }: OrderListProps) {
     pending: requests.filter((booking) => booking.status === "pending").length,
     approved: requests.filter((booking) => booking.status === "approved").length,
     completed: requests.filter((booking) => booking.status === "completed").length,
-    revenue: requests.reduce((sum, booking) => sum + (booking.total_amount || 0), 0),
+    revenue: requests.reduce((sum, booking) => {
+      if (booking.status !== "completed") return sum;
+      return sum + Number(booking.total_amount || 0);
+    }, 0),
   };
 
   async function handleStatusChange(id: string, status: string) {
