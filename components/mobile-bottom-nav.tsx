@@ -33,6 +33,9 @@ const items = [
 
 export function MobileBottomNav() {
   const pathname = usePathname();
+  if (pathname.startsWith("/customers")) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 h-[72px] border-t bg-white px-6 pb-2 safe-bottom">

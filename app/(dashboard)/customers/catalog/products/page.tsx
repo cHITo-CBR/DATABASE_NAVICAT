@@ -2,12 +2,12 @@ import { redirect } from "next/navigation";
 import { Manrope, Inter } from "next/font/google";
 import { getProducts } from "@/app/actions/products";
 import { getSession } from "@/lib/session";
-import BuyerCatalogClient from "./buyer-catalog-client";
+import BuyerCatalogClient from "@/app/(roles)/buyer/catalog/buyer-catalog-client";
 
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
-export default async function BuyerCatalogPage() {
+export default async function CustomerCatalogProductsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.user.role !== "buyer") redirect("/login");
@@ -40,7 +40,7 @@ export default async function BuyerCatalogPage() {
         categories={categories}
         userInitials={initials || "B"}
         userName={displayName}
-        basePath="/buyer"
+        basePath="/customers"
       />
     </div>
   );

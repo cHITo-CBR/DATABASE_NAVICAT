@@ -28,7 +28,7 @@ export default function LoginPage() {
           router.push("/supervisor/dashboard");
           break;
         case "buyer":
-          router.push("/customers/catalog/products");
+          router.push("/customers");
           break;
         default:
           router.push("/login");

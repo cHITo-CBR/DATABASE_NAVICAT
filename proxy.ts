@@ -24,7 +24,7 @@ const roleDashboardMap: Record<string, string> = {
   admin: "/admin/dashboard",
   salesman: "/salesman/dashboard",
   supervisor: "/supervisor/dashboard",
-  buyer: "/customers/catalog/products",
+  buyer: "/customers",
 };
 
 // Routes that don't require authentication

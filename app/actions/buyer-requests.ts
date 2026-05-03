@@ -10,34 +10,116 @@ import { getSalesItemConfig } from "@/lib/sales-schema";
 export interface BuyerRequestItem {
   product_id: string;
   quantity: number;
+  unit_price?: number;
 }
 
 /**
  * Buyer submits a product request list
  */
-export async function submitBuyerRequest(items: BuyerRequestItem[]) {
+export async function submitBuyerRequest(items: BuyerRequestItem[], options?: { deductStock?: boolean }) {
   const session = await getSession();
-  if (!session || !session.user.linked_customer_id) return { error: "Unauthorized" };
+  if (!session || session.user.role !== "buyer") return { error: "Unauthorized" };
+  const customerId = session.user.linked_customer_id || session.user.customer_id;
+  if (!customerId) return { error: "No customer profile linked." };
+  if (!items || items.length === 0) return { error: "No items provided." };
 
   const connection = await pool.getConnection();
   try {
-    await connection.beginTransaction();
-
     const requestId = generateUUID();
-    const customerId = session.user.linked_customer_id;
+    const requestColumns = await getTableColumns("buyer_requests");
+    if (requestColumns.length === 0) return { error: "buyer_requests table is missing." };
+    const itemColumns = await getTableColumns("buyer_request_items");
+    if (itemColumns.length === 0) return { error: "buyer_request_items table is missing." };
+
+    const productColumns = await getTableColumns("products");
+    const hasTotalCases = productColumns.includes("total_cases");
+    const hasAssignedSalesman = (await getTableColumns("customers")).includes("assigned_salesman_id");
 
     // 1. Create request header
+    const requestInsertColumns: string[] = ["id"];
+    const requestValues: any[] = [requestId];
+
+    if (requestColumns.includes("status")) {
+      requestInsertColumns.push("status");
+      requestValues.push("pending");
+    }
+
+    if (requestColumns.includes("customer_id")) {
+      requestInsertColumns.push("customer_id");
+      requestValues.push(customerId);
+    }
+
+    if (requestColumns.includes("buyer_id")) {
+      requestInsertColumns.push("buyer_id");
+      requestValues.push(session.user.id);
+    }
+
+    if (requestColumns.includes("salesman_id") && hasAssignedSalesman) {
+      const assigned = await queryOne<{ assigned_salesman_id: string | null }>(
+        "SELECT assigned_salesman_id FROM customers WHERE id = ?",
+        [customerId]
+      );
+      requestInsertColumns.push("salesman_id");
+      requestValues.push(assigned?.assigned_salesman_id ?? null);
+    }
+
+    const productIds = items.map((item) => item.product_id);
+    let productPriceMap = new Map<string, number>();
+    if (productIds.length > 0) {
+      const placeholders = productIds.map(() => "?").join(",");
+      const rows = await query(
+        `SELECT id, packaging_price FROM products WHERE id IN (${placeholders})`,
+        productIds
+      );
+      productPriceMap = new Map(rows.map((row: any) => [row.id, Number(row.packaging_price) || 0]));
+    }
+
+    const totalAmount = items.reduce((sum, item) => {
+      const price = item.unit_price ?? productPriceMap.get(item.product_id) ?? 0;
+      return sum + price * item.quantity;
+    }, 0);
+
+    if (requestColumns.includes("total_amount")) {
+      requestInsertColumns.push("total_amount");
+      requestValues.push(totalAmount);
+    }
+
+    await connection.beginTransaction();
+
+    const requestPlaceholders = requestInsertColumns.map(() => "?").join(", ");
     await connection.execute(
-      "INSERT INTO buyer_requests (id, customer_id, status) VALUES (?, ?, 'pending')",
-      [requestId, customerId]
+      `INSERT INTO buyer_requests (${requestInsertColumns.join(", ")}) VALUES (${requestPlaceholders})`,
+      requestValues
     );
 
     // 2. Create request items
     for (const item of items) {
+      const price = item.unit_price ?? productPriceMap.get(item.product_id) ?? 0;
+      const itemInsertColumns: string[] = ["request_id", "product_id", "quantity"];
+      const itemValues: any[] = [requestId, item.product_id, item.quantity];
+
+      if (itemColumns.includes("id")) {
+        itemInsertColumns.unshift("id");
+        itemValues.unshift(generateUUID());
+      }
+
+      if (itemColumns.includes("unit_price")) {
+        itemInsertColumns.push("unit_price");
+        itemValues.push(price);
+      }
+
+      const itemPlaceholders = itemInsertColumns.map(() => "?").join(", ");
       await connection.execute(
-        "INSERT INTO buyer_request_items (id, request_id, product_id, quantity) VALUES (?, ?, ?, ?)",
-        [generateUUID(), requestId, item.product_id, item.quantity]
+        `INSERT INTO buyer_request_items (${itemInsertColumns.join(", ")}) VALUES (${itemPlaceholders})`,
+        itemValues
       );
+
+      if (options?.deductStock && hasTotalCases) {
+        await connection.execute(
+          "UPDATE products SET total_cases = total_cases - ? WHERE id = ?",
+          [item.quantity, item.product_id]
+        );
+      }
     }
 
     await connection.commit();
