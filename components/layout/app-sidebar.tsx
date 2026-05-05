@@ -73,7 +73,7 @@ const operationsItems = [
 ];
 
 const fieldSalesItems = [
-  { title: "Order Management", path: "/orders", icon: ShoppingBag, hideFromSalesman: true, countKey: "orders" as const },
+  { title: "Order Management", path: "/orders", icon: ShoppingBag, adminOnly: true, countKey: "orders" as const },
 ];
 
 const analyticsItems = [
