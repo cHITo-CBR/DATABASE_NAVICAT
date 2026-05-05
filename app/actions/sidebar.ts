@@ -47,7 +47,7 @@ export async function getSidebarCounts(): Promise<SidebarCounts> {
       visits: Number(visits),
       buyerRequests: Number(buyerRequests),
       bookings: 0,
-      orders: 0,
+      orders: Number(sales) + Number(buyerRequests),
       callsheets: 0,
     };
   } catch (error) {

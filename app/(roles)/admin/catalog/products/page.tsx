@@ -232,8 +232,15 @@ export default function ProductCatalogPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="totalPackaging">Total Packaging</Label>
-                <Input id="totalPackaging" name="totalPackaging" placeholder="e.g. Box of 48" defaultValue={editingProduct?.total_packaging || ""} />
+                <Label htmlFor="packagingId">Packaging Type</Label>
+                <Select name="packagingId" defaultValue={editingProduct?.packaging_id?.toString() || ""}>
+                  <SelectTrigger><SelectValue placeholder="Select packaging" /></SelectTrigger>
+                  <SelectContent>
+                    {packagingTypes.map((pt) => (
+                      <SelectItem key={pt.id} value={String(pt.id)}>{pt.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="netWeight">Net Weight</Label>
@@ -326,7 +333,7 @@ export default function ProductCatalogPage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Brand</TableHead>
                   <TableHead>Packaging Price</TableHead>
-                  <TableHead>Total Packaging</TableHead>
+                  <TableHead>Packaging Type</TableHead>
                   <TableHead>Net Weight</TableHead>
                   <TableHead>Total Cases</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -358,7 +365,7 @@ export default function ProductCatalogPage() {
                         `₱${p.packaging_price.toFixed(2)}` : "—"}
                     </TableCell>
                     <TableCell className="text-gray-500">
-                      {p.total_packaging || "—"}
+                      {p.packaging_type_name || "—"}
                     </TableCell>
                     <TableCell className="text-gray-500">
                       {p.net_weight || "—"}

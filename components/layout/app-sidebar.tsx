@@ -39,6 +39,11 @@ import Image from "next/image";
 import { getCurrentUser } from "@/app/actions/auth";
 import { getSidebarCounts, SidebarCounts } from "@/app/actions/sidebar";
 import { cn } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface AppSidebarProps {
   basePath?: string;
@@ -73,7 +78,6 @@ const fieldSalesItems = [
 
 const analyticsItems = [
   { title: "Reports", path: "/reports", icon: BarChart3 },
-  { title: "AI Insights", path: "/reports/ai-insights", icon: Sparkles, adminOnly: true },
 ];
 
 const systemItems = [
@@ -146,46 +150,53 @@ export function AppSidebar({ basePath = "/admin" }: AppSidebarProps) {
     if (filteredItems.length === 0) return null;
 
     return (
-      <SidebarGroup key={section.title} className="mb-0">
-        <div className="flex items-center justify-between w-full text-left bg-transparent py-2 px-1">
-          <span className="text-[#005914] font-semibold text-[11px] tracking-wider uppercase opacity-70">
-            {section.title}
-          </span>
-        </div>
+      <Collapsible key={section.title} defaultOpen className="group/collapsible">
+        <SidebarGroup className="mb-0">
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between w-full text-left bg-transparent py-2 px-1 cursor-pointer hover:bg-gray-50 rounded-md transition-colors select-none">
+              <span className="text-[#005914] font-semibold text-[11px] tracking-wider uppercase opacity-70">
+                {section.title}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-[#005914] opacity-50 transition-transform duration-200 group-data-[state=open]/collapsible:-rotate-180" />
+            </div>
+          </CollapsibleTrigger>
 
-        <div className="mt-1">
-          <SidebarMenu>
-            {filteredItems.map((item) => {
-              const url = prefixed(item.path);
-              const isActive = pathname === url || pathname.startsWith(url + "/");
-              const countKey = (item as any).countKey as keyof SidebarCounts | undefined;
-              const count = countKey && counts ? counts[countKey] : null;
+          <CollapsibleContent className="data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:animate-in data-[state=open]:fade-in">
+            <div className="mt-1">
+              <SidebarMenu>
+                {filteredItems.map((item) => {
+                  const url = prefixed(item.path);
+                  const isActive = pathname === url || pathname.startsWith(url + "/");
+                  const countKey = (item as any).countKey as keyof SidebarCounts | undefined;
+                  const count = countKey && counts ? counts[countKey] : null;
 
-              return (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive}
-                    className="font-medium text-gray-700 select-none outline-none data-[active=true]:bg-[#E2EBE5] data-[active=true]:text-[#005914] data-[active=true]:font-bold hover:bg-gray-50 h-9"
-                  >
-                    <Link href={url} className="flex items-center justify-between w-full">
-                      <span className="flex items-center">
-                        <item.icon className="w-4 h-4 mr-2" />
-                        <span className="text-sm">{item.title}</span>
-                      </span>
-                      {count !== null && count > 0 && (
-                        <Badge variant="secondary" className="ml-auto bg-[#005914]/10 text-[#005914] text-[10px] px-1.5 py-0 h-4 min-w-[16px] flex items-center justify-center rounded-full">
-                          {count}
-                        </Badge>
-                      )}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-        </div>
-      </SidebarGroup>
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className="font-medium text-gray-700 select-none outline-none data-[active=true]:bg-[#E2EBE5] data-[active=true]:text-[#005914] data-[active=true]:font-bold hover:bg-gray-50 h-9"
+                      >
+                        <Link href={url} className="flex items-center justify-between w-full">
+                          <span className="flex items-center">
+                            <item.icon className="w-4 h-4 mr-2" />
+                            <span className="text-sm">{item.title}</span>
+                          </span>
+                          {count !== null && count > 0 && (
+                            <Badge variant="secondary" className="ml-auto bg-[#005914]/10 text-[#005914] text-[10px] px-1.5 py-0 h-4 min-w-[16px] flex items-center justify-center rounded-full">
+                              {count}
+                            </Badge>
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </div>
+          </CollapsibleContent>
+        </SidebarGroup>
+      </Collapsible>
     );
   };
 
@@ -197,7 +208,7 @@ export function AppSidebar({ basePath = "/admin" }: AppSidebarProps) {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="bg-white flex-1 overflow-y-auto px-3 py-4 space-y-2 scrollbar-hide">
+      <SidebarContent className="bg-white flex-1 overflow-y-auto px-3 pt-4 pb-8 space-y-2 custom-scrollbar">
         {sidebarSections.map(renderSection)}
       </SidebarContent>
 

@@ -55,7 +55,8 @@ export default function SalesmanDashboardPage() {
         setKpis(kpiData);
         // Combine and sort different activity types (visits, bookings, etc.)
         const combined = [
-          ...(recentData?.visits || [])
+          ...(recentData?.visits || []),
+          ...(recentData?.bookings || [])
         ].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setRecent(combined);
       }
@@ -95,6 +96,7 @@ export default function SalesmanDashboardPage() {
   // configuration for rapid field actions
   const quickActions = [
     { label: "New Visit", href: "/salesman/customers", icon: Plus, color: "text-gray-900", bg: "bg-white", border: "border-gray-200" },
+    { label: "New Booking", href: "/salesman/bookings/new", icon: ShoppingBag, color: "text-gray-900", bg: "bg-white", border: "border-gray-200" },
   ];
 
   return (
@@ -193,7 +195,7 @@ export default function SalesmanDashboardPage() {
       </div>
 
       {/* FIELD KPI CARDS */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         {kpiHighlights.map((kpi, i) => (
           <Card key={kpi.label} className={`border-0 shadow-lg rounded-2xl overflow-hidden ring-1 ${kpi.ring} animate-in fade-in slide-in-from-bottom-2`} style={{ animationDelay: `${i * 100}ms` }}>
             <CardContent className="p-4 flex flex-col items-center text-center gap-2">
@@ -243,12 +245,26 @@ export default function SalesmanDashboardPage() {
           ) : (
             recent.slice(0, 5).map((item: any, i: number) => (
               <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
-                  <MapPin className="w-4 h-4 text-[#005914]" />
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${
+                  item.type === "booking" ? "bg-emerald-50" : "bg-white"
+                }`}>
+                  {item.type === "booking" ? (
+                    <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <MapPin className="w-4 h-4 text-[#005914]" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900 truncate">{item.customers?.store_name || "Store Visit"}</p>
-                  <p className="text-[10px] text-gray-400 font-medium">{new Date(item.visit_date || item.created_at).toLocaleDateString()}</p>
+                  <p className="text-sm font-bold text-gray-900 truncate">
+                    {item.type === "booking"
+                      ? `Order — ${item.customers?.store_name || "Customer"}`
+                      : item.customers?.store_name || "Store Visit"}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-medium">
+                    {item.type === "booking" && item.total_amount
+                      ? `₱${Number(item.total_amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} • ${item.status}`
+                      : new Date(item.visit_date || item.created_at).toLocaleDateString()}
+                  </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-300" />
               </div>

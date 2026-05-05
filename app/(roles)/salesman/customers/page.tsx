@@ -94,6 +94,7 @@ export default function SalesmanCustomersPage() {
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <h3 className="text-sm font-bold text-gray-700">New Stores Available ({filteredUnassigned.length})</h3>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredUnassigned.map((c) => (
             <Card key={c.id} className="border-0 shadow-sm rounded-2xl ring-1 ring-amber-100 overflow-hidden hover:shadow-md transition-all duration-200">
               <CardContent className="p-0">
@@ -129,6 +130,7 @@ export default function SalesmanCustomersPage() {
               </CardContent>
             </Card>
           ))}
+          </div>
         </div>
       )}
 
@@ -144,7 +146,8 @@ export default function SalesmanCustomersPage() {
             <p className="text-gray-400 text-xs font-medium">No assigned stores yet. Assign a store from above!</p>
           </div>
         ) : (
-          filtered.map((c) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((c) => (
             <Card key={c.id} className="border-0 shadow-sm rounded-2xl ring-1 ring-gray-50 overflow-hidden hover:shadow-md transition-all duration-200 active:scale-[0.98]">
               <CardContent className="p-0">
                 <div className="flex items-center gap-4 p-4">
@@ -168,6 +171,8 @@ export default function SalesmanCustomersPage() {
               </CardContent>
             </Card>
           ))
+          }
+          </div>
         )}
       </div>
     </div>

@@ -13,7 +13,7 @@ export default function SalesmanDetailPage() {
   const params = useParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"visits" | "callsheets" | "bookings">("visits");
+  const [activeTab, setActiveTab] = useState<"visits" | "bookings">("visits");
 
   useEffect(() => {
     if (params.id) {
@@ -32,7 +32,6 @@ export default function SalesmanDetailPage() {
   const { profile, visits, callsheets, bookings } = data;
   const tabs = [
     { key: "visits", label: "Visits", count: visits.length, icon: MapPin },
-    { key: "callsheets", label: "Callsheets", count: callsheets.length, icon: FileText },
     { key: "bookings", label: "Bookings", count: bookings.length, icon: Clock },
   ] as const;
 
@@ -102,39 +101,7 @@ export default function SalesmanDetailPage() {
               </TableBody>
             </Table>
           )}
-          {activeTab === "callsheets" && (
-            <Table>
-              <TableHeader className="bg-gray-50/50">
-                <TableRow>
-                  <TableHead>Store</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Remarks</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {callsheets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-gray-400">No callsheets</TableCell>
-                  </TableRow>
-                ) : callsheets.map((cs: any) => (
-                  <TableRow key={cs.id}>
-                    <TableCell className="font-medium">{cs.customers?.store_name || "—"}</TableCell>
-                    <TableCell>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-md ${
-                        cs.status === "approved" ? "bg-green-50 text-green-700" :
-                        cs.status === "submitted" ? "bg-yellow-50 text-yellow-700" :
-                        cs.status === "rejected" ? "bg-red-50 text-red-700" :
-                        "bg-gray-100 text-gray-700"
-                      }`}>{cs.status}</span>
-                    </TableCell>
-                    <TableCell>{new Date(cs.visit_date || cs.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-gray-500 truncate max-w-[200px]">{cs.remarks || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+
           {activeTab === "bookings" && (
             <Table>
               <TableHeader className="bg-gray-50/50">

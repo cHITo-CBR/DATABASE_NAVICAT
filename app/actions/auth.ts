@@ -48,7 +48,7 @@ export async function registerUser(prevState: any, formData: FormData) {
       `INSERT INTO users (id, full_name, email, phone_number, password_hash, role_id, status, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [userId, fullName, email, phone || null, passwordHash, roleId,
-       isAutoApprove ? "approved" : "pending", isAutoApprove ? 1 : 0]
+        isAutoApprove ? "approved" : "pending", isAutoApprove ? 1 : 0]
     );
 
     // If user is a buyer, also create a record in the customers table and link it
@@ -58,9 +58,9 @@ export async function registerUser(prevState: any, formData: FormData) {
          VALUES (?, ?, ?, ?, 1, 'active')`,
         [fullName, fullName, email, phone || null]
       );
-      
+
       const newCustomerId = (result as any).insertId;
-      
+
       // Link the user to the customer
       await execute(
         `UPDATE users SET linked_customer_id = ? WHERE id = ?`,

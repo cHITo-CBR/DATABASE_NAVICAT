@@ -55,16 +55,24 @@ export default async function CustomerOrdersPage({
 
   return (
     <div className={`${manrope.variable} ${inter.variable} font-[var(--font-inter)] bg-slate-50 min-h-screen pb-32 text-slate-900`}>
-      <header className="fixed top-0 left-0 w-full z-40 flex justify-between items-center px-6 py-3 bg-white/80 backdrop-blur-xl shadow-sm">
+      <header className="fixed top-0 left-0 w-full z-40 flex justify-between items-center px-6 py-3 bg-white/80 backdrop-blur-xl shadow-sm border-b border-slate-100/50">
         <div className="flex items-center gap-4">
           <span className="text-xl font-extrabold font-[var(--font-manrope)] tracking-tight text-blue-600">
             Vantage Pro
           </span>
         </div>
+
+        <div className="hidden md:flex items-center gap-8 text-sm font-bold text-slate-500">
+          <Link href="/customers" className="hover:text-blue-600 transition-colors">Home</Link>
+          <Link href="/customers/catalog/products" className="hover:text-blue-600 transition-colors">Catalog</Link>
+          <Link href="/customers/bookings" className="text-blue-600">Orders</Link>
+          <Link href="/customers/profile" className="hover:text-blue-600 transition-colors">Account</Link>
+        </div>
+
         <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200" />
       </header>
 
-      <main className="pt-20 px-6 max-w-md mx-auto">
+      <main className="pt-24 px-6 max-w-6xl mx-auto">
         <section className="mb-8">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 mb-1">
             E-Commerce Portfolio
@@ -97,7 +105,7 @@ export default async function CustomerOrdersPage({
         </div>
 
         {orders.length === 0 ? (
-          <div className="rounded-3xl bg-white p-8 text-center shadow-sm border border-slate-100">
+          <div className="rounded-3xl bg-white p-8 text-center shadow-sm border border-slate-100 max-w-md">
             <Package className="h-12 w-12 text-slate-300 mx-auto" />
             <h3 className="mt-4 text-lg font-bold text-slate-800">No orders yet</h3>
             <p className="text-sm text-slate-400 mt-2">
@@ -105,13 +113,13 @@ export default async function CustomerOrdersPage({
             </p>
             <Link
               href="/customers/catalog/products"
-              className="mt-4 inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white"
+              className="mt-4 inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
             >
               Start Shopping
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {orders.map((order) => {
               const statusKey = order.status?.toLowerCase() || "pending";
               const badgeClass = statusBadgeStyles[statusKey] || "bg-slate-100 text-slate-600";
@@ -123,7 +131,7 @@ export default async function CustomerOrdersPage({
               return (
                 <div
                   key={order.id}
-                  className="bg-white rounded-3xl p-6 shadow-sm border border-white/50"
+                  className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow"
                 >
                   <div className="flex justify-between items-start mb-4">
                     <div>
@@ -151,7 +159,7 @@ export default async function CustomerOrdersPage({
                       <p className="text-sm font-bold text-slate-900">
                         {itemCount} {itemCount === 1 ? "item" : "items"}
                       </p>
-                      <p className="text-xs text-slate-500">{itemLabel}</p>
+                      <p className="text-xs text-slate-500 line-clamp-1">{itemLabel}</p>
                     </div>
                     <div className="ml-auto text-right">
                       <p className="text-lg font-extrabold text-blue-600">
@@ -161,14 +169,14 @@ export default async function CustomerOrdersPage({
                   </div>
 
                   <div className="flex flex-col gap-2">
-                    <button className="w-full py-3 rounded-2xl bg-blue-50 text-blue-700 font-bold text-sm flex items-center justify-center gap-2">
+                    <button className="w-full py-3 rounded-2xl bg-blue-50 hover:bg-blue-100 transition-colors text-blue-700 font-bold text-sm flex items-center justify-center gap-2">
                       View Details
                       <ArrowRight className="h-4 w-4" />
                     </button>
                     {(statusKey === "cancelled" || statusKey === "completed" || statusKey === "processed") && (
                       <Link
                         href="/customers/catalog/products"
-                        className="w-full py-3 rounded-2xl bg-slate-100 text-slate-600 font-bold text-sm flex items-center justify-center gap-2"
+                        className="w-full py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 transition-colors text-slate-600 font-bold text-sm flex items-center justify-center gap-2"
                       >
                         Reorder Items
                         <RefreshCcw className="h-4 w-4" />
@@ -182,7 +190,7 @@ export default async function CustomerOrdersPage({
         )}
       </main>
 
-      <nav className="fixed bottom-0 left-0 w-full z-40 flex justify-around items-center px-4 pb-6 pt-3 bg-white/90 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-3xl md:hidden">
+      <nav className="md:hidden fixed bottom-0 left-0 w-full z-40 flex justify-around items-center px-4 pb-6 pt-3 bg-white/90 backdrop-blur-lg shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-3xl border-t border-slate-100/50">
         <Link
           href="/customers"
           className="flex flex-col items-center justify-center text-slate-400 px-5 py-2"

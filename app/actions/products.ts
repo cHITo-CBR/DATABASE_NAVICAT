@@ -293,25 +293,65 @@ export async function getProductVariantsByProductId(productId: string): Promise<
   }
 }
 
-export async function getProductVariants(): Promise<{ id: string; name: string; unit_price: number; sku: string | null; product_name?: string; total_cases?: number; packaging_price?: number }[]> {
+export async function getProductVariants(): Promise<{ id: string; name: string; unit_price: number; sku: string | null; product_name?: string; total_cases?: number; packaging_price?: number; packaging_type_name?: string | null }[]> {
   try {
-    const rows = await query(
-      `SELECT pv.id, pv.name, pv.unit_price, pv.sku,
-              p.name as product_name, p.total_cases, p.packaging_price
+    // First, try to get products that have explicit variants
+    const variantRows = await query(
+      `SELECT pv.id, pv.product_id, pv.name, pv.unit_price, pv.sku,
+              p.name as product_name, p.total_cases, p.packaging_price,
+              COALESCE(vpt.name, pt.name, p.total_packaging) as packaging_type_name
        FROM product_variants pv
        LEFT JOIN products p ON pv.product_id = p.id
-       WHERE pv.is_active = 1
-       ORDER BY pv.name ASC`
+       LEFT JOIN packaging_types pt ON p.packaging_id = pt.id
+       LEFT JOIN packaging_types vpt ON pv.packaging_id = vpt.id
+       WHERE pv.is_active = 1 AND (p.is_archived = 0 OR p.is_archived IS NULL)
+       ORDER BY p.name ASC, pv.name ASC`
     );
 
-    return rows.map((v: any) => ({
+    const mappedVariants = variantRows.map((v: any) => ({
       id: v.id,
       name: v.name,
-      unit_price: v.packaging_price || v.unit_price,
+      unit_price: Number(v.packaging_price) || Number(v.unit_price) || 0,
       sku: v.sku,
       product_name: v.product_name || v.name,
-      total_cases: v.total_cases || 0,
+      total_cases: Number(v.total_cases) || 0,
+      packaging_type_name: v.packaging_type_name,
     }));
+
+    // Then, get all active products that DON'T have any active variants
+    // These products are referenced directly by product ID in transaction_items
+    const productIdsWithVariants = variantRows.map((v: any) => v.product_id).filter(Boolean);
+
+    let noVariantSql = `
+      SELECT p.id, p.name, p.packaging_price, p.total_cases, p.net_weight,
+             COALESCE(pt.name, p.total_packaging) as packaging_type_name
+      FROM products p
+      LEFT JOIN packaging_types pt ON p.packaging_id = pt.id
+      WHERE p.is_archived = 0 AND p.is_active = 1`;
+    const params: any[] = [];
+
+    if (productIdsWithVariants.length > 0) {
+      const placeholders = productIdsWithVariants.map(() => "?").join(", ");
+      noVariantSql += ` AND p.id NOT IN (${placeholders})`;
+      params.push(...productIdsWithVariants);
+    }
+
+    noVariantSql += ` ORDER BY p.name ASC`;
+
+    const productRows = await query(noVariantSql, params);
+
+    const mappedProducts = productRows.map((p: any) => ({
+      id: p.id,
+      name: "Standard",
+      unit_price: Number(p.packaging_price) || 0,
+      sku: null,
+      product_name: p.name,
+      total_cases: Number(p.total_cases) || 0,
+      packaging_type_name: p.packaging_type_name,
+    }));
+
+    // Combine: products with variants first, then standalone products
+    return [...mappedVariants, ...mappedProducts];
   } catch (error) {
     console.error("Error fetching product variants:", error);
     return [];

@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PlusCircle, Search, PackageOpen, Loader2, Inbox, Edit, Archive } from "lucide-react";
-import { getProducts, createProduct, updateProduct, archiveProduct, type ProductRow } from "@/app/actions/products";
+import { getProducts, type ProductRow } from "@/app/actions/products";
 import { getCategories, getBrands, type CategoryRow, type BrandRow } from "@/app/actions/catalog";
+import Image from "next/image";
 
 function EmptyState({ message }: { message: string }) {
   return (
@@ -88,12 +89,8 @@ export default function ProductCatalogPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Product Master Catalog</h1>
-          <p className="text-gray-500 text-sm">Manage products, their relationships to categories/brands, and product variants.</p>
+          <p className="text-gray-500 text-sm">View products, their relationships to categories/brands, and product variants.</p>
         </div>
-        <Button onClick={openCreateDialog} className="bg-[#005914] hover:bg-[#00420f]">
-          <PlusCircle className="w-4 h-4 mr-2" />
-          Add New Product
-        </Button>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -185,7 +182,6 @@ export default function ProductCatalogPage() {
                   <TableHead>Brand</TableHead>
                   <TableHead>Total Packaging</TableHead>
                   <TableHead>Net Weight</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,26 +189,20 @@ export default function ProductCatalogPage() {
                   <TableRow key={p.id} className="hover:bg-gray-50/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center">
-                          <PackageOpen className="w-5 h-5 text-gray-400" />
+                        <div className="w-10 h-10 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden border border-gray-200">
+                          {p.image_url ? (
+                            <Image src={p.image_url} alt={p.name} width={40} height={40} className="object-cover w-full h-full" />
+                          ) : (
+                            <PackageOpen className="w-5 h-5 text-gray-400" />
+                          )}
                         </div>
                         <span className="font-semibold text-[#005914]">{p.name}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-gray-500">{p.category_name ?? "—"}</TableCell>
                     <TableCell className="text-gray-500 font-medium">{p.brand_name ?? "—"}</TableCell>
-                    <TableCell className="text-gray-500">{p.total_packaging || "—"}</TableCell>
+                    <TableCell className="text-gray-500">{p.total_packaging || p.packaging_type_name || "—"}</TableCell>
                     <TableCell className="text-gray-500">{p.net_weight || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(p)} className="text-[#005914] hover:bg-[#E2EBE5]">
-                          <Edit className="w-4 h-4 mr-1" /> Edit
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleArchive(p.id)} className="text-red-600 hover:bg-red-50">
-                          <Archive className="w-4 h-4 mr-1" /> Archive
-                        </Button>
-                      </div>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

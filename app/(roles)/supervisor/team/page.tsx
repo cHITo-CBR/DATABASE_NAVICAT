@@ -64,13 +64,6 @@ export default function SupervisorTeamPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                  <FileText className="w-3.5 h-3.5 text-amber-500" />
-                  <div>
-                    <p className="text-lg font-bold text-gray-900">{s.totalCallsheets}</p>
-                    <p className="text-[10px] text-gray-400 font-medium">Callsheets</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
                   <Users className="w-3.5 h-3.5 text-blue-500" />
                   <div>
                     <p className="text-lg font-bold text-gray-900">{s.confirmedBookings}</p>

@@ -143,17 +143,24 @@ export default function BuyerCatalogClient({
       <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-slate-50/80 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <button className="h-10 w-10 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/60 flex items-center justify-center">
+            <button className="h-10 w-10 rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/60 flex items-center justify-center md:hidden">
               <Menu className="h-5 w-5 text-[#0061FF]" />
             </button>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                 Buyer Catalog
               </p>
-              <h1 className="text-lg font-extrabold font-[var(--font-manrope)] text-slate-900">
-                FlowStock AI
+              <h1 className="text-lg font-extrabold font-[var(--font-manrope)] text-[#0061FF]">
+                Vantage Pro
               </h1>
             </div>
+          </div>
+
+          <div className="hidden md:flex items-center gap-8 text-sm font-bold text-slate-500">
+            <Link href={navLinks.home} className="hover:text-[#0061FF] transition-colors">Home</Link>
+            <Link href={navLinks.catalog} className="text-[#0061FF]">Catalog</Link>
+            <Link href={navLinks.orders} className="hover:text-[#0061FF] transition-colors">Orders</Link>
+            <Link href={navLinks.account} className="hover:text-[#0061FF] transition-colors">Account</Link>
           </div>
 
           <div className="flex items-center gap-3">

@@ -40,7 +40,8 @@ export async function getBuyerHomeData(): Promise<BuyerHomeData | null> {
     session.user.email ||
     "Buyer";
 
-  const userColumns = await getTableColumns("users");
+  const userColumnsRaw = await getTableColumns("users");
+  const userColumns = userColumnsRaw.map((c) => c.COLUMN_NAME);
   let pointsBalance = 0;
   let membershipStatus = "Silver";
 
@@ -65,7 +66,17 @@ export async function getBuyerHomeData(): Promise<BuyerHomeData | null> {
     storeName = customer?.store_name || null;
   }
 
-  const requestColumns = await getTableColumns("buyer_requests");
+  // Fallback: if no customerId in session, try to find customer by email
+  if (!storeName && session.user.email) {
+    const customerByEmail = await queryOne<{ store_name: string }>(
+      "SELECT store_name FROM customers WHERE email = ?",
+      [session.user.email]
+    );
+    storeName = customerByEmail?.store_name || null;
+  }
+
+  const requestColumnsRaw = await getTableColumns("buyer_requests");
+  const requestColumns = requestColumnsRaw.map((c) => c.COLUMN_NAME);
   let pendingOrders = 0;
   let activeOrders = 0;
   let filterColumn: "buyer_id" | "customer_id" | null = null;
@@ -92,9 +103,9 @@ export async function getBuyerHomeData(): Promise<BuyerHomeData | null> {
     activeOrders = activeRow?.count || 0;
   }
 
-  const activityColumns = await getTableColumns("user_activity");
+  const activityColumnsRaw = await getTableColumns("user_activity");
   let recentActivity: BuyerHomeData["recentActivity"] = [];
-  if (activityColumns.length > 0) {
+  if (activityColumnsRaw.length > 0) {
     recentActivity = await query(
       `SELECT id, title, description, type, created_at
        FROM user_activity

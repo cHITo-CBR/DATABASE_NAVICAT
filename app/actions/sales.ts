@@ -39,7 +39,7 @@ export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
     const salesColumns = await getTableColumns("sales_transactions");
     if (salesColumns.length === 0) return [];
     const rows = await query(
-      `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
+      `SELECT st.id, st.status, st.total_amount, st.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
        FROM sales_transactions st
        LEFT JOIN customers c ON st.customer_id = c.id
@@ -51,7 +51,7 @@ export async function getSalesTransactions(): Promise<SalesTransactionRow[]> {
       id: row.id,
       status: row.status,
       total_amount: row.total_amount,
-      notes: row.notes,
+      notes: null,
       created_at: row.created_at,
       customers: row.customer_name ? { store_name: row.customer_name } : null,
       users: row.salesman_name ? { full_name: row.salesman_name } : null,
@@ -67,7 +67,7 @@ export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
     if (salesColumns.length === 0) return null;
 
     const transaction = await queryOne(
-      `SELECT st.id, st.status, st.total_amount, st.notes, st.created_at,
+      `SELECT st.id, st.status, st.total_amount, st.created_at,
               c.store_name as customer_name, u.full_name as salesman_name
        FROM sales_transactions st
        LEFT JOIN customers c ON st.customer_id = c.id
@@ -96,7 +96,7 @@ export async function getSaleDetails(id: string): Promise<SaleDetail | null> {
       id: transaction.id,
       status: transaction.status,
       total_amount: transaction.total_amount,
-      notes: transaction.notes,
+      notes: null,
       created_at: transaction.created_at,
       customers: transaction.customer_name ? { store_name: transaction.customer_name } : null,
       users: transaction.salesman_name ? { full_name: transaction.salesman_name } : null,
@@ -170,24 +170,20 @@ export async function createBooking(input: CreateBookingInput) {
       return { success: false, error: "Sales items table is missing." };
     }
 
-    const productColumns = await getTableColumns("products");
-    const hasTotalCases = productColumns.includes("total_cases");
-    const hasProductVariants = (await getTableColumns("product_variants")).length > 0;
-
     await connection.beginTransaction();
 
-    const { customer_id, salesman_id, notes, items } = input;
+    const { customer_id, salesman_id, items } = input;
     const total_amount = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const transactionId = generateUUID();
 
     // 1. Create the sales transaction record
     await connection.execute(
-      `INSERT INTO sales_transactions (id, customer_id, salesman_id, total_amount, notes, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [transactionId, customer_id, salesman_id, total_amount, notes || null]
+      `INSERT INTO sales_transactions (id, customer_id, salesman_id, total_amount, status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [transactionId, customer_id, salesman_id, total_amount]
     );
 
-    // 2. Insert transaction items and deduct inventory
+    // 2. Insert transaction items (inventory deduction happens on COMPLETE, not on booking creation)
     for (const item of items) {
       const subtotal = item.quantity * item.unit_price;
       const columns = ["transaction_id", itemConfig.variantColumn, "quantity", "unit_price", itemConfig.subtotalColumn];
@@ -203,29 +199,6 @@ export async function createBooking(input: CreateBookingInput) {
         `INSERT INTO ${itemConfig.table} (${columns.join(", ")}) VALUES (${placeholders})`,
         values
       );
-
-      // Deduct inventory via product directly
-      if (hasTotalCases) {
-        let productId = item.variant_id;
-        if (itemConfig.variantColumn === "variant_id" && hasProductVariants) {
-          const [rows] = await connection.execute(
-            "SELECT product_id FROM product_variants WHERE id = ?",
-            [item.variant_id]
-          );
-          const row = (rows as any[])[0];
-          if (!row?.product_id) {
-            throw new Error("Product variant not found for inventory update.");
-          }
-          productId = row.product_id;
-        }
-
-        await connection.execute(
-          `UPDATE products
-           SET total_cases = total_cases - ?
-           WHERE id = ?`,
-          [item.quantity, productId]
-        );
-      }
     }
 
     await connection.commit();
@@ -319,10 +292,6 @@ export async function updateBookingStatus(transactionId: string, status: string)
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const itemConfig = await getSalesItemConfig();
-    const hasProductVariants = (await getTableColumns("product_variants")).length > 0;
-    const productColumns = await getTableColumns("products");
-    const hasTotalCases = productColumns.includes("total_cases");
 
     console.log(`[Inventory] Updating transaction ${transactionId} to ${status}`);
 
@@ -352,43 +321,54 @@ export async function updateBookingStatus(transactionId: string, status: string)
       );
     }
 
-    // INVENTORY RESTORATION on CANCEL
-    const isNowCancelled = status.toLowerCase() === "cancelled";
-    const wasAlreadyCancelled = currentTx.status?.toLowerCase() === "cancelled";
+    // INVENTORY DEDUCTION on COMPLETE
+    const isNowCompleted = status.toLowerCase() === "completed";
+    const wasAlreadyCompleted = currentTx.status?.toLowerCase() === "completed";
 
-    if (isNowCancelled && !wasAlreadyCancelled) {
-      console.log(`[Inventory] Status changed to CANCELLED. Restoring deduction...`);
+    if (isNowCompleted && !wasAlreadyCompleted) {
+      console.log(`[Inventory] Status changed to COMPLETED. Deducting inventory...`);
 
-      const itemsQuery = itemConfig
-        ? `SELECT ${itemConfig.variantColumn} as variant_id, quantity FROM ${itemConfig.table} WHERE transaction_id = ?`
-        : null;
-      const [itemRows] = itemsQuery
-        ? await connection.execute(itemsQuery, [transactionId])
-        : [[], []];
+      // transaction_items.product_id links directly to products — no variant join needed
+      const [itemRows] = await connection.execute(
+        `SELECT product_id, quantity FROM transaction_items WHERE transaction_id = ?`,
+        [transactionId]
+      );
 
       for (const item of (itemRows as any[])) {
-        if (!hasTotalCases) continue;
-        let productId = item.variant_id;
-        if (itemConfig?.variantColumn === "variant_id" && hasProductVariants) {
-          const [rows] = await connection.execute(
-            "SELECT product_id FROM product_variants WHERE id = ?",
-            [item.variant_id]
-          );
-          const row = (rows as any[])[0];
-          if (!row?.product_id) {
-            throw new Error("Product variant not found for inventory restore.");
-          }
-          productId = row.product_id;
+        if (!item.product_id) {
+          console.warn(`[Inventory] Item has no product_id, skipping.`);
+          continue;
         }
-
-        // Restore stock directly to product
         await connection.execute(
-          `UPDATE products
-           SET total_cases = total_cases + ?
-           WHERE id = ?`,
-          [item.quantity, productId]
+          `UPDATE products SET total_cases = total_cases - ? WHERE id = ?`,
+          [item.quantity, item.product_id]
         );
-        console.log(`[Inventory] Restored ${item.quantity} cases for product ${productId}.`);
+        console.log(`[Inventory] Deducted ${item.quantity} cases from product ${item.product_id}.`);
+      }
+    }
+
+    // INVENTORY RESTORATION on CANCEL (only if previously completed)
+    const isNowCancelled = status.toLowerCase() === "cancelled";
+    const wasCompleted = currentTx.status?.toLowerCase() === "completed";
+
+    if (isNowCancelled && wasCompleted) {
+      console.log(`[Inventory] Status changed to CANCELLED from COMPLETED. Restoring inventory...`);
+
+      const [itemRows] = await connection.execute(
+        `SELECT product_id, quantity FROM transaction_items WHERE transaction_id = ?`,
+        [transactionId]
+      );
+
+      for (const item of (itemRows as any[])) {
+        if (!item.product_id) {
+          console.warn(`[Inventory] Item has no product_id, skipping.`);
+          continue;
+        }
+        await connection.execute(
+          `UPDATE products SET total_cases = total_cases + ? WHERE id = ?`,
+          [item.quantity, item.product_id]
+        );
+        console.log(`[Inventory] Restored ${item.quantity} cases for product ${item.product_id}.`);
       }
     }
 
@@ -403,6 +383,8 @@ export async function updateBookingStatus(transactionId: string, status: string)
     revalidatePath("/salesman/bookings");
     revalidatePath("/admin/catalog/products");
     revalidatePath("/supervisor/catalog/products");
+    revalidatePath("/admin/inventory");
+    revalidatePath("/supervisor/inventory");
 
     console.log(`[Inventory] Update process finished for ${transactionId}`);
     return { success: true };

@@ -49,7 +49,6 @@ function BookingForm() {
 
   // Transactional local state
   const [customerId, setCustomerId] = useState(customerIdParam || "");
-  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<BookingItemInput[]>([
     { variant_id: "", quantity: 1, unit_price: 0 }
   ]);
@@ -144,7 +143,6 @@ function BookingForm() {
     const result = await createBooking({
       salesman_id: userId,
       customer_id: customerId,
-      notes,
       items
     });
 
@@ -219,9 +217,10 @@ function BookingForm() {
                         {variants.map(v => {
                           const stockLevel = v.total_cases !== undefined ? ` - ${v.total_cases} cases left` : "";
                           const label = v.name === "Standard" ? v.product_name : `${v.product_name} - ${v.name}`;
+                          const packagingLabel = v.packaging_type_name ? ` (${v.packaging_type_name})` : "";
                           return (
                             <option key={v.id} value={v.id}>
-                              {label} ({v.sku || "No SKU"}){stockLevel}
+                              {label}{packagingLabel} ({v.sku || "No SKU"}){stockLevel}
                             </option>
                           );
                         })}
@@ -256,19 +255,6 @@ function BookingForm() {
          <CardContent className="p-4 flex justify-between items-center">
             <p className="text-sm font-medium opacity-90 uppercase">Total Order Value</p>
             <p className="text-2xl font-black italic">₱{totalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-         </CardContent>
-      </Card>
-
-      {/* ORDER METADATA / FEEDBACK */}
-      <Card className="border-0 shadow-sm rounded-2xl">
-         <CardContent className="p-4 space-y-2">
-            <Label className="text-xs font-semibold text-gray-500 uppercase">Order Feedback</Label>
-            <Textarea 
-               placeholder="Special delivery instructions or order notes..." 
-               className="min-h-[80px] bg-gray-50 border-0 rounded-xl text-sm"
-               value={notes}
-               onChange={(e) => setNotes(e.target.value)}
-            />
          </CardContent>
       </Card>
 

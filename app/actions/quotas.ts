@@ -68,8 +68,8 @@ export async function getQuotas(filters?: {
         [q.salesman_id, startDate, endDate]
       );
 
-      const liveAchievedAmount = txRow?.total ?? 0;
-      const liveAchievedOrders = txRow?.count ?? 0;
+      const liveAchievedAmount = Number(txRow?.total ?? 0);
+      const liveAchievedOrders = Number(txRow?.count ?? 0);
 
       const targetAmount = q.target_amount ? Number(q.target_amount) : 0;
       const achievedAmount = liveAchievedAmount > 0 ? liveAchievedAmount : Number(q.achieved_amount);
@@ -216,7 +216,7 @@ export async function getCurrentMonthQuotaSummary(): Promise<{
         [r.salesman_id, startDate, endDate]
       );
 
-      const liveAchievedAmount = txRow?.total ?? 0;
+      const liveAchievedAmount = Number(txRow?.total ?? 0);
       const finalAchieved = liveAchievedAmount > 0 ? liveAchievedAmount : (Number(r.achieved_amount) || 0);
       total_achieved += finalAchieved;
 

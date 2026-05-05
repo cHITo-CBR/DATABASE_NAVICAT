@@ -25,7 +25,6 @@ export async function submitBuyerRequest(items: BuyerRequestItem[], options?: { 
 
   const connection = await pool.getConnection();
   try {
-    const requestId = generateUUID();
     const requestColumns = await getTableColumns("buyer_requests");
     if (requestColumns.length === 0) return { error: "buyer_requests table is missing." };
     const itemColumns = await getTableColumns("buyer_request_items");
@@ -35,9 +34,9 @@ export async function submitBuyerRequest(items: BuyerRequestItem[], options?: { 
     const hasTotalCases = productColumns.includes("total_cases");
     const hasAssignedSalesman = (await getTableColumns("customers")).includes("assigned_salesman_id");
 
-    // 1. Create request header
-    const requestInsertColumns: string[] = ["id"];
-    const requestValues: any[] = [requestId];
+    // 1. Create request header (id is auto_increment, don't insert it)
+    const requestInsertColumns: string[] = [];
+    const requestValues: any[] = [];
 
     if (requestColumns.includes("status")) {
       requestInsertColumns.push("status");
@@ -87,23 +86,19 @@ export async function submitBuyerRequest(items: BuyerRequestItem[], options?: { 
     await connection.beginTransaction();
 
     const requestPlaceholders = requestInsertColumns.map(() => "?").join(", ");
-    await connection.execute(
+    const [insertResult]: any = await connection.execute(
       `INSERT INTO buyer_requests (${requestInsertColumns.join(", ")}) VALUES (${requestPlaceholders})`,
       requestValues
     );
+    const requestId = insertResult.insertId;
 
-    // 2. Create request items
+    // 2. Create request items (id is auto_increment, don't insert it)
     for (const item of items) {
-      const price = item.unit_price ?? productPriceMap.get(item.product_id) ?? 0;
       const itemInsertColumns: string[] = ["request_id", "product_id", "quantity"];
       const itemValues: any[] = [requestId, item.product_id, item.quantity];
 
-      if (itemColumns.includes("id")) {
-        itemInsertColumns.unshift("id");
-        itemValues.unshift(generateUUID());
-      }
-
       if (itemColumns.includes("unit_price")) {
+        const price = item.unit_price ?? productPriceMap.get(item.product_id) ?? 0;
         itemInsertColumns.push("unit_price");
         itemValues.push(price);
       }
@@ -192,20 +187,30 @@ export async function approveBuyerRequest(requestId: string) {
     // 2. Create Sales Transaction
     const transactionId = generateUUID();
     
-    // We need a salesman ID. For now, let's assign to the salesman assigned to the customer or null
+    // We need a salesman ID. Assign to the salesman assigned to the customer
     const customer = await queryOne("SELECT assigned_salesman_id FROM customers WHERE id = ?", [request.customer_id]);
     const salesmanId = customer?.assigned_salesman_id || '00000000-0000-0000-0000-000000000000';
 
+    // Calculate total amount from items
+    let orderTotal = 0;
+    const itemPrices: Map<string, number> = new Map();
+    for (const item of items) {
+      const prod = await queryOne("SELECT packaging_price FROM products WHERE id = ?", [item.product_id]);
+      const price = Number(prod?.packaging_price) || 0;
+      itemPrices.set(item.product_id, price);
+      orderTotal += price * item.quantity;
+    }
+
     await connection.execute(
-      `INSERT INTO sales_transactions (id, salesman_id, customer_id, status, is_buyer_initiated) 
-       VALUES (?, ?, ?, 'pending', 1)`,
-      [transactionId, salesmanId, request.customer_id]
+      `INSERT INTO sales_transactions (id, salesman_id, customer_id, total_amount, status, is_buyer_initiated) 
+       VALUES (?, ?, ?, ?, 'pending', 1)`,
+      [transactionId, salesmanId, request.customer_id, orderTotal]
     );
 
     // 3. Move items to sales items table
     for (const item of items) {
       let variantId = item.product_id;
-      let price = 0;
+      let price = itemPrices.get(item.product_id) || 0;
 
       if (itemConfig.variantColumn === "variant_id" && hasProductVariants) {
         const variant = await queryOne(
@@ -217,9 +222,6 @@ export async function approveBuyerRequest(requestId: string) {
         }
         variantId = variant.id;
         price = Number(variant.unit_price) || 0;
-      } else {
-        const prod = await queryOne("SELECT packaging_price FROM products WHERE id = ?", [item.product_id]);
-        price = Number(prod?.packaging_price) || 0;
       }
 
       const subtotal = price * item.quantity;
@@ -245,6 +247,7 @@ export async function approveBuyerRequest(requestId: string) {
     await connection.commit();
     revalidatePath("/admin/buyer-requests");
     revalidatePath("/admin/sales");
+    revalidatePath("/admin/orders");
     return { success: true };
   } catch (error: any) {
     await connection.rollback();

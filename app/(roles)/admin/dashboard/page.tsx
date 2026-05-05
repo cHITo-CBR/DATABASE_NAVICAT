@@ -200,65 +200,6 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* AI INSIGHT SNAPSHOT (PROACTIVE) */}
-      <Card className="shadow-lg border-0 rounded-3xl bg-gradient-to-r from-green-50 to-white overflow-hidden border-l-4 border-green-600">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-green-600 flex items-center justify-center text-white shadow-md shadow-green-100">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">AI Business Insight</h3>
-                <p className="text-gray-500 text-xs">Gemini analysis based on live inventory & sales data</p>
-              </div>
-            </div>
-            <Link href="/admin/reports/ai-insights">
-              <Button size="sm" className="bg-[#005914] hover:bg-green-800 text-[10px] font-black uppercase rounded-xl px-4 py-2 h-auto shadow-sm">
-                Chat With AI
-              </Button>
-            </Link>
-          </div>
-          
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-green-100/50 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-[#005914]">
-                <Bot className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Inventory Health</span>
-              </div>
-              <p className="text-xs text-gray-700 font-medium">
-                {kpis?.lowStockItems && kpis.lowStockItems > 0 
-                  ? `${kpis.lowStockItems} variants require immediate restocking to prevent stockouts.`
-                  : "All inventory levels are optimal. No critical shortages detected."
-                }
-              </p>
-            </div>
-            
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-green-100/50 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-[#005914]">
-                <Activity className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Sales Velocity</span>
-              </div>
-              <p className="text-xs text-gray-700 font-medium">
-                {(kpis?.pipelineGrowth ?? 0) > 0 
-                  ? `Sales activity is up ${kpis?.pipelineGrowth}% compared to last period.`
-                  : "Sales activity is steady. Pipeline momentum is maintaining."
-                }
-              </p>
-            </div>
-
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-green-100/50 flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-[#005914]">
-                <Target className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Efficiency Forecast</span>
-              </div>
-              <p className="text-xs text-gray-700 font-medium">
-                Current efficiency is {kpis?.goalEfficiency?.toFixed(1) ?? '0.0'}%. Recommended focus: Optimize salesperson quotas.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* PRIMARY KPI SUMMARY CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
